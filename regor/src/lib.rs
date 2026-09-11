@@ -24,6 +24,7 @@ mod config;
 mod error;
 mod format;
 mod logging;
+pub mod options;
 mod output;
 mod perf;
 mod constraints;

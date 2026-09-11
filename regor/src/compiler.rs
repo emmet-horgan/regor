@@ -60,10 +60,28 @@ impl Compiler {
         Ok(self)
     }
 
-    /// Apply compiler option overrides.
+    /// Apply typed compiler options built with [`crate::options::CompilerOptions`].
     ///
-    /// Accepts the same key=value syntax as `regor_set_compiler_options`
-    /// (e.g. `"optimise=Performance"`).
+    /// ```no_run
+    /// # use regor::{Compiler, Architecture};
+    /// # use regor::options::*;
+    /// let opts = CompilerOptions::new()
+    ///     .optimise(Optimise::Performance)
+    ///     .arena_cache_size(2 * 1024 * 1024)
+    ///     .build()
+    ///     .unwrap();
+    ///
+    /// let mut c = Compiler::new(Architecture::EthosU55).unwrap();
+    /// c.set_options(&opts).unwrap();
+    /// ```
+    pub fn set_options(&mut self, serialised: &str) -> crate::Result<&mut Self> {
+        self.compiler_options(serialised)
+    }
+
+    /// Apply compiler option overrides from a raw key=value string.
+    ///
+    /// Prefer [`set_options`](Self::set_options) with
+    /// [`CompilerOptions`](crate::options::CompilerOptions) for type safety.
     pub fn compiler_options(&mut self, options: &str) -> crate::Result<&mut Self> {
         let rc = unsafe {
             ffi::regor_set_compiler_options(

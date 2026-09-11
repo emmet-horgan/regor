@@ -1,0 +1,3 @@
+[workspace]
+members = ["regor-sys", "regor"]
+resolver = "2"

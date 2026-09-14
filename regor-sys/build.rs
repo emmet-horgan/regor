@@ -207,18 +207,19 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
         .arg("-DREGOR_ENABLE_ASSERT=OFF")
         .current_dir(&build_dir);
 
-    // Pick a single-config generator. On MSVC, use NMake Makefiles — it
-    // inherits the MSVC environment (cl.exe). Ninja on Windows picks up
-    // MinGW from PATH which can't compile regor. On Unix, prefer Ninja
-    // for speed, fall back to Unix Makefiles.
-    let generator = if target.contains("msvc") {
-        "NMake Makefiles"
-    } else if has_ninja() {
-        "Ninja"
+    // Use a single-config generator. Prefer Ninja (fast, handles long paths).
+    // Fall back to Unix Makefiles on non-Windows. On MSVC targets, explicitly
+    // set the compiler to cl.exe so cmake doesn't pick up MinGW from PATH.
+    if has_ninja() {
+        configure.args(["-G", "Ninja"]);
+    } else if target.contains("msvc") {
+        configure.args(["-G", "NMake Makefiles"]);
     } else {
-        "Unix Makefiles"
-    };
-    configure.args(["-G", generator]);
+        configure.args(["-G", "Unix Makefiles"]);
+    }
+    if target.contains("msvc") {
+        configure.args(["-DCMAKE_C_COMPILER=cl", "-DCMAKE_CXX_COMPILER=cl"]);
+    }
 
     let status = configure.status().expect("failed to run cmake configure");
     if !status.success() {

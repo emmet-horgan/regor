@@ -40,9 +40,9 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install cmake ninja
 
-      - name: Install build tools (Windows)
+      - name: Set up MSVC environment (Windows)
         if: runner.os == 'Windows'
-        run: choco install ninja
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Install Python dependencies
         run: |

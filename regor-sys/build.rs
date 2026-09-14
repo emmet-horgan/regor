@@ -190,9 +190,14 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
     let build_dir = out_dir.join("regor-build");
     let install_dir = out_dir.join("regor-install");
 
-    // Remove stale cmake state so a generator change doesn't fail.
-    if build_dir.join("CMakeCache.txt").exists() {
+    // Always start fresh — stale cmake state or install artifacts from a
+    // prior failed build (e.g. different generator, partial install) cause
+    // hard-to-debug linker failures.
+    if build_dir.exists() {
         fs::remove_dir_all(&build_dir).ok();
+    }
+    if install_dir.exists() {
+        fs::remove_dir_all(&install_dir).ok();
     }
     fs::create_dir_all(&build_dir).expect("failed to create build dir");
     fs::create_dir_all(&install_dir).expect("failed to create install dir");

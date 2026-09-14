@@ -33,11 +33,36 @@ fn main() {
     let install_dir = cmake_build(&regor_source);
 
     let lib_dir = find_lib_dir(&install_dir).unwrap_or_else(|| {
+        // Dump directory contents for debugging
+        eprintln!("regor-sys: install_dir contents:");
+        for entry in walkdir(&install_dir) {
+            eprintln!("  {}", entry.display());
+        }
         panic!(
             "Could not find libregor.a or regor.lib under {}",
             install_dir.display()
         )
     });
+
+    // Tell cargo to re-run if the library file disappears (e.g. cache eviction).
+    let lib_file = if lib_dir.join("regor.lib").exists() {
+        lib_dir.join("regor.lib")
+    } else {
+        lib_dir.join("libregor.a")
+    };
+    println!("cargo:rerun-if-changed={}", lib_file.display());
+    eprintln!(
+        "regor-sys: linking {} ({})",
+        lib_file.display(),
+        if lib_file.exists() {
+            format!(
+                "{} bytes",
+                fs::metadata(&lib_file).map(|m| m.len()).unwrap_or(0)
+            )
+        } else {
+            "MISSING".to_string()
+        }
+    );
 
     let include_dir = install_dir.join("include").join("regor");
     let include_str = if include_dir.exists() {

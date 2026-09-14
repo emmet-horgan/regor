@@ -63,9 +63,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
-      - name: Clean stale regor-sys build artifacts
+      - name: Force-clean regor-sys build state
+        run: cargo clean -p regor-sys 2>nul || true
         shell: bash
-        run: rm -rf target/debug/build/regor-sys-*
 
       - name: Cache test fixtures
         uses: actions/cache@v4
@@ -81,8 +81,8 @@ jobs:
       - name: Download MobileNet model
         run: python tests/download_model.py tests/fixtures/mobilenet_v1_quant.tflite
 
-      - name: Build workspace
-        run: cargo build --workspace
+      - name: Build workspace (verbose for regor-sys)
+        run: cargo build --workspace -vv
 
       - name: Run all tests
         run: cargo test --workspace -- --test-threads=1

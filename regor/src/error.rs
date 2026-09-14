@@ -7,10 +7,7 @@ use regor_sys as ffi;
 #[derive(Debug)]
 pub enum Error {
     /// The C library returned a non-zero status code.
-    RegorError {
-        code: i32,
-        message: String,
-    },
+    RegorError { code: i32, message: String },
     /// An argument contained an interior NUL byte.
     NulError(std::ffi::NulError),
 }
@@ -41,12 +38,13 @@ impl From<std::ffi::NulError> for Error {
     }
 }
 
+/// Check a regor return code. The regor C API returns non-zero (typically 1)
+/// on success and 0 on failure.
 pub(crate) fn check(ctx: ffi::regor_context_t, code: i32) -> crate::Result<()> {
-    if code == 0 {
+    if code != 0 {
         return Ok(());
     }
     let mut len: usize = 0;
-    // First call: query required length.
     unsafe { ffi::regor_get_error(ctx, std::ptr::null_mut(), &mut len) };
     if len == 0 {
         return Err(Error::RegorError {
@@ -61,4 +59,15 @@ pub(crate) fn check(ctx: ffi::regor_context_t, code: i32) -> crate::Result<()> {
         .to_string_lossy()
         .into_owned();
     Err(Error::RegorError { code, message: msg })
+}
+
+/// Check a return code for global (context-free) functions like logging.
+pub(crate) fn check_global(code: i32) -> crate::Result<()> {
+    if code != 0 {
+        return Ok(());
+    }
+    Err(Error::RegorError {
+        code,
+        message: "regor global function failed".into(),
+    })
 }

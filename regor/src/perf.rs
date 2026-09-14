@@ -63,8 +63,7 @@ impl PerfReport {
         let accesses = if raw.access.is_null() || raw.access_count <= 0 {
             Vec::new()
         } else {
-            let slice =
-                std::slice::from_raw_parts(raw.access, raw.access_count as usize);
+            let slice = std::slice::from_raw_parts(raw.access, raw.access_count as usize);
             slice
                 .iter()
                 .map(|a| MemoryAccessPerf {

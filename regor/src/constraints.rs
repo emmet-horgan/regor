@@ -23,8 +23,7 @@ impl ConstraintsReport {
             };
         }
 
-        let slice =
-            std::slice::from_raw_parts(raw.op_constraints, raw.operators as usize);
+        let slice = std::slice::from_raw_parts(raw.op_constraints, raw.operators as usize);
 
         let operators = slice
             .iter()

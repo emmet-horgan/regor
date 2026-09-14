@@ -49,10 +49,7 @@ pub struct Blob {
 unsafe impl Send for Blob {}
 
 impl Blob {
-    pub(crate) unsafe fn from_raw(
-        ctx: ffi::regor_context_t,
-        ptr: *mut ffi::IRegorBlob,
-    ) -> Self {
+    pub(crate) unsafe fn from_raw(ctx: ffi::regor_context_t, ptr: *mut ffi::IRegorBlob) -> Self {
         Self { ctx, ptr }
     }
 

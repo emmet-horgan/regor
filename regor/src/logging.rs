@@ -2,7 +2,7 @@ use std::os::raw::c_uint;
 
 use regor_sys as ffi;
 
-use crate::error::Error;
+use crate::error::check_global;
 
 /// Logging output format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -17,9 +17,7 @@ impl LogFormat {
     fn to_raw(self) -> c_uint {
         match self {
             LogFormat::Text => ffi::regor_logging_format_t::REGOR_LOG_FORMAT_TEXT as c_uint,
-            LogFormat::Terminal => {
-                ffi::regor_logging_format_t::REGOR_LOG_FORMAT_TERMINAL as c_uint
-            }
+            LogFormat::Terminal => ffi::regor_logging_format_t::REGOR_LOG_FORMAT_TERMINAL as c_uint,
         }
     }
 }
@@ -48,15 +46,8 @@ pub fn set_log_callback(
     callback: unsafe extern "C" fn(*const std::os::raw::c_void, usize),
     filter: LogFilter,
 ) -> crate::Result<()> {
-    let rc =
-        unsafe { ffi::regor_set_logging(Some(callback), filter.bits()) };
-    if rc != 0 {
-        return Err(Error::RegorError {
-            code: rc,
-            message: "failed to set log callback".into(),
-        });
-    }
-    Ok(())
+    let rc = unsafe { ffi::regor_set_logging(Some(callback), filter.bits()) };
+    check_global(rc)
 }
 
 /// Install a global log callback with explicit format control.
@@ -65,14 +56,6 @@ pub fn set_log_callback_ex(
     filter: LogFilter,
     format: LogFormat,
 ) -> crate::Result<()> {
-    let rc = unsafe {
-        ffi::regor_set_logging_ex(Some(callback), filter.bits(), format.to_raw())
-    };
-    if rc != 0 {
-        return Err(Error::RegorError {
-            code: rc,
-            message: "failed to set log callback".into(),
-        });
-    }
-    Ok(())
+    let rc = unsafe { ffi::regor_set_logging_ex(Some(callback), filter.bits(), format.to_raw()) };
+    check_global(rc)
 }

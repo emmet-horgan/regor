@@ -22,8 +22,7 @@ pub type regor_writer_t =
     Option<unsafe extern "C" fn(user_arg: *mut c_void, data: *const c_void, size: usize) -> usize>;
 
 /// Callback invoked by the logging subsystem.
-pub type regor_log_writer_t =
-    Option<unsafe extern "C" fn(data: *const c_void, size: usize)>;
+pub type regor_log_writer_t = Option<unsafe extern "C" fn(data: *const c_void, size: usize)>;
 
 // ---------------------------------------------------------------------------
 // Enums
@@ -243,11 +242,7 @@ unsafe extern "C" {
     ///
     /// On entry `*length` is the buffer capacity. On return it holds the
     /// actual message length (excluding NUL).
-    pub fn regor_get_error(
-        ctx: regor_context_t,
-        text: *mut c_char,
-        length: *mut usize,
-    ) -> c_int;
+    pub fn regor_get_error(ctx: regor_context_t, text: *mut c_char, length: *mut usize) -> c_int;
 
     /// Free data previously allocated by regor on behalf of this context.
     pub fn regor_free_data(ctx: regor_context_t, data: *const c_void) -> c_int;
@@ -263,10 +258,7 @@ unsafe extern "C" {
     ) -> c_int;
 
     /// Retrieve the performance report from the last compilation.
-    pub fn regor_get_perf_report(
-        ctx: regor_context_t,
-        report: *mut regor_perf_report_t,
-    ) -> c_int;
+    pub fn regor_get_perf_report(ctx: regor_context_t, report: *mut regor_perf_report_t) -> c_int;
 
     /// Retrieve TFLite operator constraint information.
     pub fn regor_get_tflite_constraints(

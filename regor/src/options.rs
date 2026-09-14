@@ -280,9 +280,10 @@ impl CompilerOptions {
     /// `regor_set_compiler_options`.
     pub fn build(&self) -> Result<String, OptionsError> {
         // Validate cross-field constraints.
-        let has_separate_io = self.entries.iter().any(|(k, v)| {
-            k == "separate_io_regions" && v == "true"
-        });
+        let has_separate_io = self
+            .entries
+            .iter()
+            .any(|(k, v)| k == "separate_io_regions" && v == "true");
         if has_separate_io {
             let has_cop2 = self
                 .entries
@@ -324,7 +325,10 @@ impl std::fmt::Display for OptionsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OptionsError::InvalidAlignment(v) => {
-                write!(f, "cpu_tensor_alignment must be a power of two >= 16, got {v}")
+                write!(
+                    f,
+                    "cpu_tensor_alignment must be a power of two >= 16, got {v}"
+                )
             }
             OptionsError::OutOfRange {
                 option,
@@ -365,9 +369,7 @@ mod tests {
 
     #[test]
     fn separate_io_requires_cop2() {
-        let err = CompilerOptions::new()
-            .separate_io_regions(true)
-            .build();
+        let err = CompilerOptions::new().separate_io_regions(true).build();
         assert!(err.is_err());
 
         let ok = CompilerOptions::new()

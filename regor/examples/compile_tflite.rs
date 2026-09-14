@@ -4,7 +4,9 @@ fn main() -> regor::Result<()> {
     let model_path = std::env::args()
         .nth(1)
         .expect("usage: compile_tflite <model.tflite> [output.tflite]");
-    let output_path = std::env::args().nth(2).unwrap_or_else(|| "output.tflite".into());
+    let output_path = std::env::args()
+        .nth(2)
+        .unwrap_or_else(|| "output.tflite".into());
 
     let model = std::fs::read(&model_path).expect("failed to read model file");
 

@@ -21,23 +21,21 @@
 
 mod compiler;
 mod config;
+mod constraints;
 mod error;
 mod format;
 mod logging;
 pub mod options;
 mod output;
 mod perf;
-mod constraints;
 
 pub use compiler::Compiler;
 pub use config::Architecture;
+pub use constraints::{ConstraintsReport, OperatorConstraints};
 pub use error::Error;
 pub use format::InputFormat;
-pub use logging::{LogFormat, LogFilter, set_log_callback, set_log_callback_ex};
-pub use output::{Output, Blob};
-pub use perf::{
-    PerfReport, PeakMemoryUsage, MemoryAccessPerf,
-};
-pub use constraints::{ConstraintsReport, OperatorConstraints};
+pub use logging::{set_log_callback, set_log_callback_ex, LogFilter, LogFormat};
+pub use output::{Blob, Output};
+pub use perf::{MemoryAccessPerf, PeakMemoryUsage, PerfReport};
 
 pub type Result<T> = std::result::Result<T, Error>;

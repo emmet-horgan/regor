@@ -1,6 +1,7 @@
 use std::ffi::CString;
 use std::mem::MaybeUninit;
 use std::os::raw::c_void;
+use std::sync::Once;
 
 use regor_sys as ffi;
 
@@ -10,6 +11,18 @@ use crate::error::check;
 use crate::format::InputFormat;
 use crate::output::{Blob, Output};
 use crate::perf::PerfReport;
+
+static LOGGING_INIT: Once = Once::new();
+
+/// No-op log writer registered as a fallback so regor never asserts on a null
+/// writer during compilation.
+unsafe extern "C" fn noop_log_writer(_data: *const c_void, _size: usize) {}
+
+fn ensure_logging_initialized() {
+    LOGGING_INIT.call_once(|| {
+        unsafe { ffi::regor_set_logging(Some(noop_log_writer), 0) };
+    });
+}
 
 /// A regor compiler instance.
 ///
@@ -38,6 +51,7 @@ impl Drop for Compiler {
 impl Compiler {
     /// Create a new compiler targeting `arch`.
     pub fn new(arch: Architecture) -> crate::Result<Self> {
+        ensure_logging_initialized();
         let mut ctx: ffi::regor_context_t = 0;
         let rc = unsafe { ffi::regor_create(&mut ctx, arch.as_cstr().as_ptr()) };
         check(ctx, rc)?;
@@ -49,13 +63,8 @@ impl Compiler {
     /// The format is the INI/TOML dialect used by Vela's `.ini` config files
     /// (e.g. `"Ethos_U55_High_End_Embedded"`).
     pub fn system_config(&mut self, config: &str) -> crate::Result<&mut Self> {
-        let rc = unsafe {
-            ffi::regor_set_system_config(
-                self.ctx,
-                config.as_ptr().cast(),
-                config.len(),
-            )
-        };
+        let rc =
+            unsafe { ffi::regor_set_system_config(self.ctx, config.as_ptr().cast(), config.len()) };
         check(self.ctx, rc)?;
         Ok(self)
     }
@@ -84,11 +93,7 @@ impl Compiler {
     /// [`CompilerOptions`](crate::options::CompilerOptions) for type safety.
     pub fn compiler_options(&mut self, options: &str) -> crate::Result<&mut Self> {
         let rc = unsafe {
-            ffi::regor_set_compiler_options(
-                self.ctx,
-                options.as_ptr().cast(),
-                options.len(),
-            )
+            ffi::regor_set_compiler_options(self.ctx, options.as_ptr().cast(), options.len())
         };
         check(self.ctx, rc)?;
         Ok(self)
@@ -168,8 +173,7 @@ impl Compiler {
     /// Reports which operators cannot be accelerated and why.
     pub fn tflite_constraints(&self) -> crate::Result<ConstraintsReport> {
         let mut raw = MaybeUninit::<ffi::regor_operator_constraints_report_t>::zeroed();
-        let rc =
-            unsafe { ffi::regor_get_tflite_constraints(self.ctx, raw.as_mut_ptr()) };
+        let rc = unsafe { ffi::regor_get_tflite_constraints(self.ctx, raw.as_mut_ptr()) };
         check(self.ctx, rc)?;
         Ok(unsafe { ConstraintsReport::from_ffi(&raw.assume_init()) })
     }

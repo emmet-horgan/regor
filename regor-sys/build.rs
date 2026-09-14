@@ -190,8 +190,14 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
     let build_dir = out_dir.join("regor-build");
     let install_dir = out_dir.join("regor-install");
 
+    // Remove stale cmake state so a generator change doesn't fail.
+    if build_dir.join("CMakeCache.txt").exists() {
+        fs::remove_dir_all(&build_dir).ok();
+    }
     fs::create_dir_all(&build_dir).expect("failed to create build dir");
     fs::create_dir_all(&install_dir).expect("failed to create install dir");
+
+    let target = env::var("TARGET").unwrap_or_default();
 
     let mut configure = Command::new("cmake");
     configure
@@ -201,15 +207,14 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
         .arg("-DREGOR_ENABLE_ASSERT=OFF")
         .current_dir(&build_dir);
 
-    // Use a single-config generator on all platforms. Multi-config generators
-    // (Visual Studio) put outputs in per-config subdirs (e.g. Release/) which
-    // breaks library discovery. Prefer Ninja (fast, cross-platform), fall back
-    // to NMake on MSVC and Unix Makefiles elsewhere.
-    let target = env::var("TARGET").unwrap_or_default();
-    let generator = if has_ninja() {
-        "Ninja"
-    } else if target.contains("msvc") {
+    // Pick a single-config generator. On MSVC, use NMake Makefiles — it
+    // inherits the MSVC environment (cl.exe). Ninja on Windows picks up
+    // MinGW from PATH which can't compile regor. On Unix, prefer Ninja
+    // for speed, fall back to Unix Makefiles.
+    let generator = if target.contains("msvc") {
         "NMake Makefiles"
+    } else if has_ninja() {
+        "Ninja"
     } else {
         "Unix Makefiles"
     };

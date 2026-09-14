@@ -235,6 +235,11 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
         .arg(format!("-DCMAKE_INSTALL_PREFIX={}", install_dir.display()))
         .arg("-DCMAKE_BUILD_TYPE=Release")
         .arg("-DREGOR_ENABLE_ASSERT=OFF")
+        // Disable LTO/IPO — MSVC's LTCG produces bitcode in the .lib that
+        // requires /LTCG at final link time, which Rust's linker invocation
+        // doesn't pass. Without this, the .lib is ~486MB of bitcode and all
+        // symbols appear unresolved.
+        .arg("-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=OFF")
         .current_dir(&build_dir);
 
     // Use a single-config generator. Prefer Ninja (fast, handles long paths).

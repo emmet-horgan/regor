@@ -32,14 +32,12 @@ fn main() {
 
     let install_dir = cmake_build(&regor_source);
 
-    // cmake may install to lib/ or lib64/ depending on the platform.
-    let lib_dir = if install_dir.join("lib64").join("libregor.a").exists()
-        || install_dir.join("lib64").join("regor.lib").exists()
-    {
-        install_dir.join("lib64")
-    } else {
-        install_dir.join("lib")
-    };
+    let lib_dir = find_lib_dir(&install_dir).unwrap_or_else(|| {
+        panic!(
+            "Could not find libregor.a or regor.lib under {}",
+            install_dir.display()
+        )
+    });
 
     let include_dir = install_dir.join("include").join("regor");
     let include_str = if include_dir.exists() {
@@ -203,12 +201,19 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
         .arg("-DREGOR_ENABLE_ASSERT=OFF")
         .current_dir(&build_dir);
 
-    // On Windows with MSVC, use the default generator. Otherwise, prefer Makefiles
-    // for predictability.
+    // Use a single-config generator on all platforms. Multi-config generators
+    // (Visual Studio) put outputs in per-config subdirs (e.g. Release/) which
+    // breaks library discovery. Prefer Ninja (fast, cross-platform), fall back
+    // to NMake on MSVC and Unix Makefiles elsewhere.
     let target = env::var("TARGET").unwrap_or_default();
-    if !target.contains("msvc") {
-        configure.args(["-G", "Unix Makefiles"]);
-    }
+    let generator = if has_ninja() {
+        "Ninja"
+    } else if target.contains("msvc") {
+        "NMake Makefiles"
+    } else {
+        "Unix Makefiles"
+    };
+    configure.args(["-G", generator]);
 
     let status = configure.status().expect("failed to run cmake configure");
     if !status.success() {
@@ -294,6 +299,36 @@ fn find_lib_in_build_tree(build_dir: &Path, source_dir: &Path) -> PathBuf {
     }
 
     fallback_dir
+}
+
+/// Search for the directory containing libregor.a or regor.lib.
+/// cmake may install to lib/, lib64/, or even lib/Release/ depending on
+/// the platform and generator.
+fn find_lib_dir(install_dir: &Path) -> Option<PathBuf> {
+    let lib_names = ["libregor.a", "regor.lib"];
+    let candidates = [
+        install_dir.join("lib"),
+        install_dir.join("lib64"),
+        install_dir.join("lib").join("Release"),
+        install_dir.join("lib64").join("Release"),
+    ];
+    for dir in &candidates {
+        for name in &lib_names {
+            if dir.join(name).exists() {
+                return Some(dir.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Check if Ninja is available on the system.
+fn has_ninja() -> bool {
+    Command::new("ninja")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 /// Simple recursive directory walker.

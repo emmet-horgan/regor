@@ -1,7 +1,7 @@
 use std::ffi::CString;
 use std::mem::MaybeUninit;
 use std::os::raw::c_void;
-use std::sync::Once;
+use std::sync::{Mutex, MutexGuard, Once, PoisonError};
 
 use regor_sys as ffi;
 
@@ -13,6 +13,31 @@ use crate::output::{Blob, Output};
 use crate::perf::PerfReport;
 
 static LOGGING_INIT: Once = Once::new();
+
+/// Serialises **all** regor FFI calls across the process.
+///
+/// The C library is not safe to drive from more than one thread, even through
+/// separate contexts. Its own mutex covers the context registry — creation,
+/// lookup and destruction — but the compiler, scheduler and architecture code
+/// underneath reach global state that nothing guards, and that state is shared
+/// between contexts for as long as they exist. Holding a lock only around
+/// `regor_compile` is therefore not enough: configuring one context while
+/// another compiles corrupts it just the same.
+///
+/// So every entry point takes this lock. Concurrency is lost, which is a real
+/// cost, but a safe wrapper cannot offer a faster contract than the library
+/// underneath actually honours — and the failure mode being prevented is a
+/// segfault, not a wrong answer.
+///
+/// The lock is poisoned only if a call panics while holding it, which for this
+/// FFI means the library is in an unknown state. The guard is recovered rather
+/// than propagating a poison error, since the alternative is that every later
+/// call fails for a reason unrelated to its own input.
+static REGOR_LOCK: Mutex<()> = Mutex::new(());
+
+fn lock() -> MutexGuard<'static, ()> {
+    REGOR_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 /// No-op log writer registered as a fallback so regor never asserts on a null
 /// writer during compilation.
@@ -37,13 +62,31 @@ fn ensure_logging_initialized() {
 /// 4. Read the compiled [`Output`] and optionally the [`PerfReport`].
 pub struct Compiler {
     ctx: ffi::regor_context_t,
+    /// Configuration is buffered rather than pushed straight through to the C
+    /// library, and applied inside [`Compiler::compile`] while `COMPILE_LOCK`
+    /// is held. Applying it eagerly would let one thread reconfigure the shared
+    /// state another thread is midway through compiling against.
+    pending_system_config: Option<String>,
+    pending_options: Option<String>,
 }
 
-// The C library documents that each context is independent.
+// Each context owns its own C++ `Compiler`, so a context can be moved between
+// threads. It is deliberately not `Sync`, and compilation additionally takes
+// `COMPILE_LOCK` because the work underneath touches shared global state.
 unsafe impl Send for Compiler {}
+
+impl std::fmt::Debug for Compiler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The context is an opaque handle, so there is nothing to show beyond
+        // its identity. Implemented so `Compiler` can sit inside a `Result` that
+        // callers `unwrap`.
+        f.debug_struct("Compiler").field("ctx", &self.ctx).finish()
+    }
+}
 
 impl Drop for Compiler {
     fn drop(&mut self) {
+        let _guard = lock();
         unsafe { ffi::regor_destroy(self.ctx) };
     }
 }
@@ -52,24 +95,56 @@ impl Compiler {
     /// Create a new compiler targeting `arch`.
     pub fn new(arch: Architecture) -> crate::Result<Self> {
         ensure_logging_initialized();
+        let _guard = lock();
         let mut ctx: ffi::regor_context_t = 0;
         let rc = unsafe { ffi::regor_create(&mut ctx, arch.as_cstr().as_ptr()) };
         check(ctx, rc)?;
-        Ok(Compiler { ctx })
+        Ok(Compiler {
+            ctx,
+            pending_system_config: None,
+            pending_options: None,
+        })
     }
 
     /// Apply a system configuration string.
     ///
-    /// The format is the INI/TOML dialect used by Vela's `.ini` config files
-    /// (e.g. `"Ethos_U55_High_End_Embedded"`).
+    /// The document must carry an `[architecture]` section sizing the NPU and a
+    /// `[vela]` section naming which of the Vela `.ini`'s `System_Config.*` and
+    /// `Memory_Mode.*` sections to apply. Prefer
+    /// [`set_system_config`](Self::set_system_config), which builds that for
+    /// you.
+    ///
+    /// The configuration is recorded now and handed to the C library when
+    /// [`compile`](Self::compile) runs, so any error in it surfaces there.
     pub fn system_config(&mut self, config: &str) -> crate::Result<&mut Self> {
-        let rc =
-            unsafe { ffi::regor_set_system_config(self.ctx, config.as_ptr().cast(), config.len()) };
-        check(self.ctx, rc)?;
+        self.pending_system_config = Some(config.to_owned());
         Ok(self)
     }
 
-    /// Apply typed compiler options built with [`crate::options::CompilerOptions`].
+    /// Apply a system configuration built with
+    /// [`SystemConfig`](crate::options::SystemConfig).
+    ///
+    /// This is how the accelerator is selected; there is no compiler option for
+    /// it.
+    ///
+    /// ```no_run
+    /// # use regor::{Compiler, options::*};
+    /// let system = SystemConfig::new(AcceleratorConfig::EthosU55_256)
+    ///     .system_config_name("Ethos_U55_High_End_Embedded")
+    ///     .memory_mode_name("Shared_Sram")
+    ///     .vela_ini(std::fs::read_to_string("vela.ini")?)
+    ///     .build();
+    ///
+    /// let mut c = Compiler::new(AcceleratorConfig::EthosU55_256.architecture())?;
+    /// c.set_system_config(&system)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn set_system_config(&mut self, config: &str) -> crate::Result<&mut Self> {
+        self.system_config(config)
+    }
+
+    /// Apply typed compiler options built with
+    /// [`CompilerOptions`](crate::options::CompilerOptions).
     ///
     /// ```no_run
     /// # use regor::{Compiler, Architecture};
@@ -91,20 +166,45 @@ impl Compiler {
     ///
     /// Prefer [`set_options`](Self::set_options) with
     /// [`CompilerOptions`](crate::options::CompilerOptions) for type safety.
+    ///
+    /// The options are recorded now and handed to the C library when
+    /// [`compile`](Self::compile) runs, so any error in them surfaces there.
     pub fn compiler_options(&mut self, options: &str) -> crate::Result<&mut Self> {
-        let rc = unsafe {
-            ffi::regor_set_compiler_options(self.ctx, options.as_ptr().cast(), options.len())
-        };
-        check(self.ctx, rc)?;
+        self.pending_options = Some(options.to_owned());
         Ok(self)
+    }
+
+    /// Push the buffered configuration into the C library.
+    ///
+    /// Must be called with `COMPILE_LOCK` held: it mutates the state that
+    /// compilation then reads.
+    fn apply_pending(&mut self) -> crate::Result<()> {
+        if let Some(config) = self.pending_system_config.take() {
+            let rc = unsafe {
+                ffi::regor_set_system_config(self.ctx, config.as_ptr().cast(), config.len())
+            };
+            check(self.ctx, rc)?;
+        }
+        if let Some(options) = self.pending_options.take() {
+            let rc = unsafe {
+                ffi::regor_set_compiler_options(self.ctx, options.as_ptr().cast(), options.len())
+            };
+            check(self.ctx, rc)?;
+        }
+        Ok(())
     }
 
     /// Compile a model, collecting the output via an internal buffer.
     ///
     /// Returns the compiled bytes as an [`Output`].
+    ///
+    /// Serialised process-wide; see [`REGOR_LOCK`].
     pub fn compile(&mut self, format: InputFormat, model: &[u8]) -> crate::Result<Output> {
         let mut buf: Vec<u8> = Vec::new();
         let buf_ptr: *mut Vec<u8> = &mut buf;
+
+        let _guard = lock();
+        self.apply_pending()?;
 
         unsafe {
             ffi::regor_set_callback_arg(self.ctx, buf_ptr as *mut c_void);
@@ -138,6 +238,9 @@ impl Compiler {
         user_arg: *mut c_void,
         writer: unsafe extern "C" fn(*mut c_void, *const c_void, usize) -> usize,
     ) -> crate::Result<()> {
+        let _guard = lock();
+        self.apply_pending()?;
+
         ffi::regor_set_callback_arg(self.ctx, user_arg);
         let rc = ffi::regor_compile(
             self.ctx,
@@ -154,6 +257,7 @@ impl Compiler {
     /// This is the C++ `IRegorBlob` interface — useful when you need to pass
     /// the output back into other regor APIs without copying.
     pub fn get_output_blob(&mut self) -> crate::Result<Blob> {
+        let _guard = lock();
         let mut ptr: *mut ffi::IRegorBlob = std::ptr::null_mut();
         let rc = unsafe { ffi::regor_get_output(self.ctx, &mut ptr) };
         check(self.ctx, rc)?;
@@ -162,6 +266,7 @@ impl Compiler {
 
     /// Retrieve the performance report from the most recent compilation.
     pub fn perf_report(&self) -> crate::Result<PerfReport> {
+        let _guard = lock();
         let mut raw = MaybeUninit::<ffi::regor_perf_report_t>::zeroed();
         let rc = unsafe { ffi::regor_get_perf_report(self.ctx, raw.as_mut_ptr()) };
         check(self.ctx, rc)?;
@@ -172,6 +277,7 @@ impl Compiler {
     ///
     /// Reports which operators cannot be accelerated and why.
     pub fn tflite_constraints(&self) -> crate::Result<ConstraintsReport> {
+        let _guard = lock();
         let mut raw = MaybeUninit::<ffi::regor_operator_constraints_report_t>::zeroed();
         let rc = unsafe { ffi::regor_get_tflite_constraints(self.ctx, raw.as_mut_ptr()) };
         check(self.ctx, rc)?;
@@ -182,6 +288,7 @@ impl Compiler {
     ///
     /// Returns `None` if no reporting data is available.
     pub fn reporting_interface(&self) -> Option<*mut ffi::IRegorReporting> {
+        let _guard = lock();
         let ptr = unsafe { ffi::regor_get_reporting_interface(self.ctx) };
         if ptr.is_null() {
             None
@@ -195,6 +302,7 @@ impl Compiler {
     /// Returns `None` if the graph builder is not available.
     pub fn graph_builder(&mut self, name: &str) -> crate::Result<Option<*mut ffi::IGraphBuilder>> {
         let c_name = CString::new(name)?;
+        let _guard = lock();
         let ptr = unsafe { ffi::regor_get_graph_builder(self.ctx, c_name.as_ptr()) };
         if ptr.is_null() {
             Ok(None)

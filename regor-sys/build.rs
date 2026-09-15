@@ -33,11 +33,6 @@ fn main() {
     let install_dir = cmake_build(&regor_source);
 
     let lib_dir = find_lib_dir(&install_dir).unwrap_or_else(|| {
-        // Dump directory contents for debugging
-        eprintln!("regor-sys: install_dir contents:");
-        for entry in walkdir(&install_dir) {
-            eprintln!("  {}", entry.display());
-        }
         panic!(
             "Could not find libregor.a or regor.lib under {}",
             install_dir.display()
@@ -51,18 +46,6 @@ fn main() {
         lib_dir.join("libregor.a")
     };
     println!("cargo:rerun-if-changed={}", lib_file.display());
-    eprintln!(
-        "regor-sys: linking {} ({})",
-        lib_file.display(),
-        if lib_file.exists() {
-            format!(
-                "{} bytes",
-                fs::metadata(&lib_file).map(|m| m.len()).unwrap_or(0)
-            )
-        } else {
-            "MISSING".to_string()
-        }
-    );
 
     let include_dir = install_dir.join("include").join("regor");
     let include_str = if include_dir.exists() {
@@ -132,8 +115,6 @@ fn download_source() -> PathBuf {
         "{GITLAB_HOST}/api/v4/projects/{GITLAB_PROJECT}/repository/archive.tar.gz?sha={PINNED_RELEASE}"
     );
 
-    eprintln!("regor-sys: downloading ethos-u-vela {PINNED_RELEASE} from {url}");
-
     download_file(&url, &tarball);
 
     if cache_dir.exists() {
@@ -142,9 +123,54 @@ fn download_source() -> PathBuf {
     fs::create_dir_all(&cache_dir).expect("failed to create cache dir");
 
     extract_tarball(&tarball, &cache_dir);
+
+    let src = find_regor_in(&cache_dir).expect("extracted tarball does not contain ethosu/regor");
+    patch_context_id_allocation(&src);
+
     fs::write(&marker, "").expect("failed to write marker");
 
-    find_regor_in(&cache_dir).expect("extracted tarball does not contain ethosu/regor")
+    src
+}
+
+/// Give each regor context a unique id.
+///
+/// Upstream derives the id from the size of the context map:
+///
+/// ```cpp
+/// *ctx = regor_context_t(s_contextMap.size() + 1);
+/// ```
+///
+/// Ids therefore collide as soon as a context is destroyed while others are
+/// alive. Create A (id 1) and B (id 2), destroy A, and the next create sees
+/// size 1 and takes id 2 as well — the assignment that follows replaces B's
+/// `unique_ptr`, destroying the `Compiler` that B's still-live handle points at.
+/// Every later call through B is a use-after-free, which shows up as an empty
+/// error at best and a segfault at worst.
+///
+/// A monotonic counter fixes it. Patching the vendored source is deliberate:
+/// the bug is not reachable around from the Rust side, because the id is chosen
+/// entirely inside `regor_create`.
+///
+/// Reported upstream; remove this when the fix lands in a pinned release.
+fn patch_context_id_allocation(src: &Path) {
+    let path = src.join("regor.cpp");
+    let text = fs::read_to_string(&path).expect("failed to read regor.cpp");
+
+    const UPSTREAM: &str = "*ctx = regor_context_t(s_contextMap.size() + 1);";
+    const PATCHED: &str = "static int s_nextContextId = 0;\n        *ctx = regor_context_t(++s_nextContextId);";
+
+    if text.contains(PATCHED) {
+        return;
+    }
+
+    assert!(
+        text.contains(UPSTREAM),
+        "regor.cpp does not contain the expected context-id allocation; \
+         the pinned release may already fix it — re-check {}",
+        path.display()
+    );
+
+    fs::write(&path, text.replace(UPSTREAM, PATCHED)).expect("failed to patch regor.cpp");
 }
 
 /// Locate the ethosu/regor directory inside an extracted tarball.
@@ -237,8 +263,8 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
         .arg("-DREGOR_ENABLE_ASSERT=OFF")
         // Disable LTO — regor's cmake enables it by default via REGOR_ENABLE_LTO
         // when check_ipo_supported() succeeds. On MSVC this produces LTCG bitcode
-        // in the .lib (~486MB) that requires /LTCG at final link time, which Rust
-        // doesn't pass. Disabling it produces normal object code (~30MB).
+        // in the .lib that requires /LTCG at final link time, which Rust
+        // doesn't pass. Disabling it produces normal object code.
         .arg("-DREGOR_ENABLE_LTO=OFF")
         .current_dir(&build_dir);
 
@@ -284,7 +310,6 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
     if !status.success() {
         // Not all cmake configs have install rules for the static target.
         // Fall back to finding the library in the build tree.
-        eprintln!("regor-sys: cmake install failed, searching build tree for libregor");
         return find_lib_in_build_tree(&build_dir, regor_source);
     }
 

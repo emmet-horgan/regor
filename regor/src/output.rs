@@ -8,6 +8,16 @@ pub struct Output {
     data: Vec<u8>,
 }
 
+impl std::fmt::Debug for Output {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Command streams run to hundreds of kilobytes, so show the size rather
+        // than the bytes.
+        f.debug_struct("Output")
+            .field("len", &self.data.len())
+            .finish_non_exhaustive()
+    }
+}
+
 impl Output {
     pub(crate) fn new(data: Vec<u8>) -> Self {
         Self { data }
@@ -43,6 +53,15 @@ impl AsRef<[u8]> for Output {
 pub struct Blob {
     ctx: ffi::regor_context_t,
     ptr: *mut ffi::IRegorBlob,
+}
+
+impl std::fmt::Debug for Blob {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Blob")
+            .field("ctx", &self.ctx)
+            .field("ptr", &self.ptr)
+            .finish()
+    }
 }
 
 // IRegorBlob is internally synchronized by the C++ runtime.

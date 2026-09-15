@@ -6,17 +6,31 @@
 //! # Quick start
 //!
 //! ```no_run
-//! use regor::{Compiler, Architecture, InputFormat};
+//! use regor::{Compiler, InputFormat};
+//! use regor::options::*;
 //!
-//! let model_bytes = std::fs::read("model.tflite").unwrap();
+//! let model_bytes = std::fs::read("model.tflite")?;
+//! let accelerator = AcceleratorConfig::EthosU55_256;
 //!
-//! let output = Compiler::new(Architecture::EthosU55)?
-//!     .system_config("Ethos_U55_High_End_Embedded")?
-//!     .compiler_options("optimise=Performance")?
-//!     .compile(InputFormat::TfLite, &model_bytes)?;
+//! // The accelerator is described by the system configuration, not by a
+//! // compiler option — see [`options`].
+//! let system = SystemConfig::new(accelerator)
+//!     .system_config_name("Ethos_U55_High_End_Embedded")
+//!     .memory_mode_name("Shared_Sram")
+//!     .vela_ini(std::fs::read_to_string("vela.ini")?)
+//!     .build();
 //!
-//! std::fs::write("output.tflite", output.as_bytes()).unwrap();
-//! # Ok::<(), regor::Error>(())
+//! let options = CompilerOptions::new()
+//!     .optimise(Optimise::Performance)
+//!     .build()?;
+//!
+//! let mut compiler = Compiler::new(accelerator.architecture())?;
+//! compiler.set_system_config(&system)?;
+//! compiler.set_options(&options)?;
+//! let output = compiler.compile(InputFormat::TfLite, &model_bytes)?;
+//!
+//! std::fs::write("output.tflite", output.as_bytes())?;
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
 mod compiler;
@@ -35,6 +49,7 @@ pub use constraints::{ConstraintsReport, OperatorConstraints};
 pub use error::Error;
 pub use format::InputFormat;
 pub use logging::{set_log_callback, set_log_callback_ex, LogFilter, LogFormat};
+pub use options::{AcceleratorConfig, CompilerOptions, OptionsError, SystemConfig};
 pub use output::{Blob, Output};
 pub use perf::{MemoryAccessPerf, PeakMemoryUsage, PerfReport};
 

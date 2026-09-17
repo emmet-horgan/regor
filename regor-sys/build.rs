@@ -106,7 +106,14 @@ fn download_source() -> PathBuf {
     let cache_dir = out_dir.join("vela-source");
     let marker = cache_dir.join(".extracted");
 
-    if marker.exists() {
+    let patches = patch_files();
+    for patch in &patches {
+        println!("cargo:rerun-if-changed={}", patch.display());
+    }
+    let fingerprint = patches_fingerprint(&patches);
+
+    // Reuse the extracted tree only if it was patched with this exact patch set.
+    if fs::read_to_string(&marker).map(|s| s == fingerprint).unwrap_or(false) {
         if let Some(src) = find_regor_in(&cache_dir) {
             return src;
         }
@@ -127,9 +134,9 @@ fn download_source() -> PathBuf {
     extract_tarball(&tarball, &cache_dir);
 
     let src = find_regor_in(&cache_dir).expect("extracted tarball does not contain ethosu/regor");
-    patch_context_id_allocation(&src);
+    apply_patches(&src, &patches);
 
-    fs::write(&marker, "").expect("failed to write marker");
+    fs::write(&marker, &fingerprint).expect("failed to write marker");
 
     src
 }
@@ -153,26 +160,103 @@ fn download_source() -> PathBuf {
 /// the bug is not reachable around from the Rust side, because the id is chosen
 /// entirely inside `regor_create`.
 ///
-/// Reported upstream; remove this when the fix lands in a pinned release.
-fn patch_context_id_allocation(src: &Path) {
-    let path = src.join("regor.cpp");
-    let text = fs::read_to_string(&path).expect("failed to read regor.cpp");
+/// Reported upstream; remove the patch when the fix lands in a pinned release.
+fn apply_patches(src: &Path, patches: &[PathBuf]) {
+    // Patches are generated against the repository root, so paths look like
+    // `a/ethosu/regor/regor.cpp` while `src` is already `.../ethosu/regor`.
+    // Strip those three leading components.
+    const STRIP: &str = "-p3";
 
-    const UPSTREAM: &str = "*ctx = regor_context_t(s_contextMap.size() + 1);";
-    const PATCHED: &str = "static int s_nextContextId = 0;\n        *ctx = regor_context_t(++s_nextContextId);";
+    // The extracted source usually sits under `target/`, i.e. inside the
+    // consuming crate's own git repository and matched by its .gitignore.
+    // In that situation `git apply` reports success while printing
+    // "Skipped patch" and changing nothing. Stop repository discovery at the
+    // source directory so git treats it as a plain directory tree.
+    let ceiling = src.parent().unwrap_or(src);
 
-    if text.contains(PATCHED) {
-        return;
+    let git = |args: &[&str], patch: &PathBuf| {
+        Command::new("git")
+            .args(args)
+            .arg(patch)
+            .current_dir(src)
+            .env("GIT_CEILING_DIRECTORIES", ceiling)
+            .output()
+    };
+
+    for patch in patches {
+        // Already applied (e.g. a partially reused cache)? Nothing to do.
+        let applied = |p: &PathBuf| {
+            git(&["apply", STRIP, "--reverse", "--check"], p)
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        };
+
+        if applied(patch) {
+            continue;
+        }
+
+        let output = git(&["apply", STRIP, "--verbose"], patch).unwrap_or_else(|e| {
+            panic!(
+                "failed to run `git apply` for {}: {e}. git is required to patch \
+                 the vendored regor source.",
+                patch.display()
+            )
+        });
+
+        if !output.status.success() {
+            panic!(
+                "failed to apply {}:\n{}\nThe pinned release ({PINNED_RELEASE}) may already \
+                 contain this fix, or the patch needs rebasing.",
+                patch.display(),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+
+        // `git apply` can exit 0 without doing anything, so confirm the patch
+        // really is present instead of trusting the exit code.
+        assert!(
+            applied(patch),
+            "`git apply` reported success but {} is not present in {}",
+            patch.display(),
+            src.display()
+        );
+
+        eprintln!("regor-sys: applied {}", patch.display());
     }
+}
 
-    assert!(
-        text.contains(UPSTREAM),
-        "regor.cpp does not contain the expected context-id allocation; \
-         the pinned release may already fix it — re-check {}",
-        path.display()
-    );
+/// Patches to apply to the vendored regor source, in sorted (apply) order.
+fn patch_files() -> Vec<PathBuf> {
+    let dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("patches");
+    let mut patches: Vec<PathBuf> = fs::read_dir(&dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.extension().is_some_and(|e| e == "patch"))
+                .collect()
+        })
+        .unwrap_or_default();
+    patches.sort();
+    patches
+}
 
-    fs::write(&path, text.replace(UPSTREAM, PATCHED)).expect("failed to patch regor.cpp");
+/// Fingerprint of the patch set, stored in the extraction marker so that
+/// editing, adding or removing a patch forces a clean re-extract rather than
+/// silently reusing a differently-patched source tree.
+fn patches_fingerprint(patches: &[PathBuf]) -> String {
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut feed = |bytes: &[u8]| {
+        for b in bytes {
+            hash ^= u64::from(*b);
+            hash = hash.wrapping_mul(0x0100_0000_01b3);
+        }
+    };
+    for patch in patches {
+        feed(patch.file_name().unwrap_or_default().as_encoded_bytes());
+        feed(&fs::read(patch).unwrap_or_default());
+    }
+    format!("v1 {hash:016x}")
 }
 
 /// Locate the ethosu/regor directory inside an extracted tarball.
@@ -259,10 +343,11 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
     // linker failures.
     let stamp_file = cache_dir.join("regor-build.stamp");
     let stamp = format!(
-        "v1\nsource={}\ntarget={}\ngenerator={}\n",
+        "v1\nsource={}\ntarget={}\ngenerator={}\npatches={}\n",
         regor_source.display(),
         target,
-        generator
+        generator,
+        patches_fingerprint(&patch_files())
     );
     let stamp_matches = fs::read_to_string(&stamp_file).map(|s| s == stamp).unwrap_or(false);
     let force_rebuild = env::var_os("REGOR_FORCE_REBUILD").is_some();

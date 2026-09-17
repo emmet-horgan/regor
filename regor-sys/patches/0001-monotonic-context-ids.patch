@@ -1,0 +1,45 @@
+From edc63bb3bf200710067a1bce9b7d08b819b3901e Mon Sep 17 00:00:00 2001
+From: Emmet Horgan <horgan098@gmail.com>
+Date: Wed, 16 Sep 2026 22:25:34 +0100
+Subject: [PATCH] Use monotonic IDs
+
+Previously context IDs were assigned based on the size of the s_contextMap map. But frees would delete the context id and from the map meaning that the next allocation would overwrite another existing ID and invoke the std::unique_ptr<Compiler> destructor
+
+Signed-off-by: Emmet Horgan <horgan098@gmail.com>
+---
+ ethosu/regor/regor.cpp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/ethosu/regor/regor.cpp b/ethosu/regor/regor.cpp
+index aabfc9fb..dd7f19a9 100644
+--- a/ethosu/regor/regor.cpp
++++ b/ethosu/regor/regor.cpp
+@@ -33,6 +33,7 @@
+ #include "tflite/tflite_mapping.hpp"
+ 
+ #include <algorithm>
++#include <atomic>
+ #include <memory>
+ #include <mutex>
+ #include <string>
+@@ -77,6 +78,7 @@ struct Memories
+ };
+ 
+ std::unordered_map<int, std::unique_ptr<Compiler>> s_contextMap;
++std::atomic<int> s_nextContextId{0};
+ std::mutex s_contextMutex;
+ 
+ Compiler *GetContext(regor_context_t ctx)
+@@ -245,7 +247,8 @@ DLL_EXPORT int regor_create(regor_context_t *ctx, const char *archName)
+     if ( arch )
+     {
+         std::lock_guard<std::mutex> lock(s_contextMutex);
+-        *ctx = regor_context_t(s_contextMap.size() + 1);
++        const auto nextId = s_nextContextId.fetch_add(1, std::memory_order_relaxed) + 1;
++        *ctx = regor_context_t(nextId);
+         s_contextMap[*ctx] = std::make_unique<Compiler>(arch);
+         return 1;
+     }
+-- 
+GitLab
+

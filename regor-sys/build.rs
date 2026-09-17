@@ -14,6 +14,8 @@ fn main() {
     println!("cargo:rerun-if-env-changed=REGOR_LIB_DIR");
     println!("cargo:rerun-if-env-changed=REGOR_INCLUDE_DIR");
     println!("cargo:rerun-if-env-changed=REGOR_CXX_LIB");
+    println!("cargo:rerun-if-env-changed=REGOR_CACHE_DIR");
+    println!("cargo:rerun-if-env-changed=REGOR_FORCE_REBUILD");
 
     if let Ok(lib_dir) = env::var("REGOR_LIB_DIR") {
         link_prebuilt(&PathBuf::from(lib_dir), env::var("REGOR_INCLUDE_DIR").ok());
@@ -100,7 +102,7 @@ fn link_cxx_stdlib() {
 
 /// Download the ethos-u-vela source tarball from GitLab and extract it.
 fn download_source() -> PathBuf {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let out_dir = cache_root();
     let cache_dir = out_dir.join("vela-source");
     let marker = cache_dir.join(".extracted");
 
@@ -237,23 +239,54 @@ fn extract_tarball(tarball: &Path, dest: &Path) {
 
 /// Build the regor static library via cmake.
 fn cmake_build(regor_source: &Path) -> PathBuf {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let build_dir = out_dir.join("regor-build");
-    let install_dir = out_dir.join("regor-install");
-
-    // Always start fresh — stale cmake state or install artifacts from a
-    // prior failed build (e.g. different generator, partial install) cause
-    // hard-to-debug linker failures.
-    if build_dir.exists() {
-        fs::remove_dir_all(&build_dir).ok();
-    }
-    if install_dir.exists() {
-        fs::remove_dir_all(&install_dir).ok();
-    }
-    fs::create_dir_all(&build_dir).expect("failed to create build dir");
-    fs::create_dir_all(&install_dir).expect("failed to create install dir");
+    let cache_dir = cache_root();
+    let build_dir = cache_dir.join("regor-build");
+    let install_dir = cache_dir.join("regor-install");
 
     let target = env::var("TARGET").unwrap_or_default();
+
+    let generator = if has_ninja() {
+        "Ninja"
+    } else if target.contains("msvc") {
+        "NMake Makefiles"
+    } else {
+        "Unix Makefiles"
+    };
+
+    // Stamp describing the configuration this cache directory was built with.
+    // If anything here changes we must start from scratch, because stale cmake
+    // state (different generator, different source tree) causes hard-to-debug
+    // linker failures.
+    let stamp_file = cache_dir.join("regor-build.stamp");
+    let stamp = format!(
+        "v1\nsource={}\ntarget={}\ngenerator={}\n",
+        regor_source.display(),
+        target,
+        generator
+    );
+    let stamp_matches = fs::read_to_string(&stamp_file).map(|s| s == stamp).unwrap_or(false);
+    let force_rebuild = env::var_os("REGOR_FORCE_REBUILD").is_some();
+
+    // Fast path: a previous run already produced an installed library with the
+    // exact same configuration, so there is nothing to do.
+    if stamp_matches && !force_rebuild {
+        if let Some(lib_dir) = find_lib_dir(&install_dir) {
+            eprintln!(
+                "regor-sys: reusing cached build at {} (set REGOR_FORCE_REBUILD=1 to rebuild)",
+                lib_dir.display()
+            );
+            return install_dir;
+        }
+    }
+
+    if !stamp_matches || force_rebuild {
+        fs::remove_dir_all(&build_dir).ok();
+        fs::remove_dir_all(&install_dir).ok();
+        fs::remove_file(&stamp_file).ok();
+    }
+
+    fs::create_dir_all(&build_dir).expect("failed to create build dir");
+    fs::create_dir_all(&install_dir).expect("failed to create install dir");
 
     let mut configure = Command::new("cmake");
     configure
@@ -266,18 +299,11 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
         // in the .lib that requires /LTCG at final link time, which Rust
         // doesn't pass. Disabling it produces normal object code.
         .arg("-DREGOR_ENABLE_LTO=OFF")
+        .args(["-G", generator])
         .current_dir(&build_dir);
 
-    // Use a single-config generator. Prefer Ninja (fast, handles long paths).
-    // Fall back to Unix Makefiles on non-Windows. On MSVC targets, explicitly
-    // set the compiler to cl.exe so cmake doesn't pick up MinGW from PATH.
-    if has_ninja() {
-        configure.args(["-G", "Ninja"]);
-    } else if target.contains("msvc") {
-        configure.args(["-G", "NMake Makefiles"]);
-    } else {
-        configure.args(["-G", "Unix Makefiles"]);
-    }
+    // On MSVC targets, explicitly set the compiler to cl.exe so cmake doesn't
+    // pick up MinGW from PATH.
     if target.contains("msvc") {
         configure.args(["-DCMAKE_C_COMPILER=cl", "-DCMAKE_CXX_COMPILER=cl"]);
     }
@@ -313,13 +339,39 @@ fn cmake_build(regor_source: &Path) -> PathBuf {
         return find_lib_in_build_tree(&build_dir, regor_source);
     }
 
+    fs::write(&stamp_file, &stamp).ok();
+
     install_dir
+}
+
+/// Stable, shared cache directory for the C++ build artifacts.
+///
+/// This deliberately avoids `OUT_DIR`: cargo derives `OUT_DIR` from a hash of
+/// the build script's inputs, so it changes whenever the build script is
+/// recompiled and the (very expensive) C++ build would be discarded. Keying off
+/// the target directory instead keeps artifacts across such changes.
+fn cache_root() -> PathBuf {
+    let root = if let Ok(dir) = env::var("REGOR_CACHE_DIR") {
+        PathBuf::from(dir)
+    } else {
+        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+        // OUT_DIR is <target>/<profile>/build/<pkg>-<hash>/out
+        let base = out_dir
+            .ancestors()
+            .nth(3)
+            .map(Path::to_path_buf)
+            .unwrap_or(out_dir);
+        base.join("regor-sys-cache")
+    };
+
+    let root = root.join(env::var("TARGET").unwrap_or_default());
+    fs::create_dir_all(&root).expect("failed to create cache dir");
+    root
 }
 
 /// When cmake install doesn't work, search the build tree for the static lib.
 fn find_lib_in_build_tree(build_dir: &Path, source_dir: &Path) -> PathBuf {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let fallback_dir = out_dir.join("regor-fallback");
+    let fallback_dir = cache_root().join("regor-fallback");
     let lib_dir = fallback_dir.join("lib");
     let include_dir = fallback_dir.join("include");
 

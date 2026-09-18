@@ -134,8 +134,13 @@ jobs:
       # configured. Driving it here — rather than reimplementing cmake
       # invocations in YAML — keeps the published artifacts identical to what a
       # local source build of the same tree would produce.
+      #
+      # Deliberately not `shell: bash`: on the Windows runner that is Git Bash,
+      # which prepends `C:\Program Files\Git\usr\bin` to PATH. That directory
+      # contains a coreutils `link.exe`, which shadows the MSVC linker and
+      # fails on the first object file it is handed. Using the default shell
+      # keeps the PATH that msvc-dev-cmd set up.
       - name: Build native library
-        shell: bash
         run: cargo build -p regor-sys --target ${{ matrix.target }} -vv
         env:
           REGOR_CACHE_DIR: ${{ github.workspace }}/native-cache
@@ -148,8 +153,10 @@ jobs:
         run: |
           set -euo pipefail
           name="regor-native-${{ matrix.target }}-${{ matrix.config }}"
-          install="native-cache/${{ matrix.target }}/regor-install"
-          test -d "$install" || { echo "no install tree at $install"; exit 1; }
+          # build.rs names its cache directories <target>-<config>-<hash>, so
+          # the exact path is not known here; there is only ever one per job.
+          install=$(find native-cache -maxdepth 2 -type d -name install | head -n1)
+          test -n "$install" || { echo "no install tree under native-cache"; exit 1; }
 
           # Ship the cmake install tree: the static library plus the headers,
           # which build.rs republishes as `cargo:include` for dependent crates.

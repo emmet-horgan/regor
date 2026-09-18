@@ -155,8 +155,15 @@ jobs:
           name="regor-native-${{ matrix.target }}-${{ matrix.config }}"
           # build.rs names its cache directories <target>-<config>-<hash>, so
           # the exact path is not known here; there is only ever one per job.
-          install=$(find native-cache -maxdepth 2 -type d -name install | head -n1)
-          test -n "$install" || { echo "no install tree under native-cache"; exit 1; }
+          # `install-fallback` is what it produces when cmake has no install
+          # rules for the static target.
+          install=$(find native-cache -maxdepth 2 -type d \
+            \( -name install -o -name install-fallback \) -print -quit)
+          if [ -z "$install" ]; then
+            echo "no install tree under native-cache; contents:"
+            find native-cache -maxdepth 3
+            exit 1
+          fi
 
           # Ship the cmake install tree: the static library plus the headers,
           # which build.rs republishes as `cargo:include` for dependent crates.

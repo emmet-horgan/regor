@@ -91,7 +91,9 @@ jobs:
             | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           git clone --depth 1 --branch "$release" \
             https://gitlab.arm.com/artificial-intelligence/ethos-u/ethos-u-vela.git vela
-          echo "ETHOS_U_VELA_PATH=$PWD/vela" >> "$GITHUB_ENV"
+          # Not $PWD: under Git Bash on Windows that is an MSYS path
+          # (/d/a/...), which the build script cannot open.
+          echo "ETHOS_U_VELA_PATH=${GITHUB_WORKSPACE}/vela" >> "$GITHUB_ENV"
 
       # Patching is CI's job, not the build script's. Tests run against the
       # same patched source the published artifacts are built from.

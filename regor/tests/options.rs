@@ -10,10 +10,11 @@ use regor::options::*;
 use regor::{Compiler, InputFormat};
 
 /// A Vela configuration covering the reference Ethos-U55 systems.
-const VELA_INI: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../tests/fixtures/vela_default.ini"
-));
+///
+/// Checked in alongside this test rather than downloaded: `include_str!` runs
+/// at compile time, so it has to be present before any fixture-generating step
+/// could have run.
+const VELA_INI: &str = include_str!("fixtures/vela_default.ini");
 
 fn model() -> Vec<u8> {
     std::fs::read(concat!(

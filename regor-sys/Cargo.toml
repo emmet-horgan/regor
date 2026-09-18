@@ -7,4 +7,9 @@ license = "MIT OR Apache-2.0"
 links = "regor"
 
 [build-dependencies]
-cc = "1"
+# Unpacking the downloaded artifact. Fetching is left to curl or wget, which
+# avoids pulling a TLS stack into build-dependencies.
+flate2 = "1"
+tar = "0.4"
+# Verifies downloads against the digests pinned in `artifacts.sha256`.
+sha2 = "0.10"

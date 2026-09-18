@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use regor_sys as ffi;
 
 /// Compiled output returned by [`crate::Compiler::compile`].
@@ -6,6 +8,16 @@ use regor_sys as ffi;
 /// writer-callback path so all data is owned by Rust.
 pub struct Output {
     data: Vec<u8>,
+}
+
+impl std::fmt::Debug for Output {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Command streams run to hundreds of kilobytes, so show the size rather
+        // than the bytes.
+        f.debug_struct("Output")
+            .field("len", &self.data.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Output {
@@ -36,21 +48,41 @@ impl AsRef<[u8]> for Output {
     }
 }
 
-/// RAII wrapper around `IRegorBlob*`.
+/// Handle to an `IRegorBlob*` owned by a [`Compiler`](crate::Compiler).
 ///
-/// The blob is reference-counted on the C++ side. Dropping this handle
-/// calls `Release()` through the vtable.
-pub struct Blob {
+/// The blob belongs to the context that produced it and is released when that
+/// context is destroyed. The borrow tying it to the compiler is what makes this
+/// sound: the handle would dangle the moment the context went away, and there
+/// is no `Release` entry point in the C API to hand ownership over instead.
+///
+/// Not `Send`. The pointer is only meaningful while the borrowed compiler is
+/// alive, and that compiler is itself `!Sync`.
+pub struct Blob<'a> {
     ctx: ffi::regor_context_t,
     ptr: *mut ffi::IRegorBlob,
+    owner: PhantomData<&'a mut ()>,
 }
 
-// IRegorBlob is internally synchronized by the C++ runtime.
-unsafe impl Send for Blob {}
+impl std::fmt::Debug for Blob<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Blob")
+            .field("ctx", &self.ctx)
+            .field("ptr", &self.ptr)
+            .finish()
+    }
+}
 
-impl Blob {
+impl Blob<'_> {
+    /// # Safety
+    ///
+    /// `ptr` must be a blob produced by `ctx`, and the returned lifetime must
+    /// not outlive that context.
     pub(crate) unsafe fn from_raw(ctx: ffi::regor_context_t, ptr: *mut ffi::IRegorBlob) -> Self {
-        Self { ctx, ptr }
+        Self {
+            ctx,
+            ptr,
+            owner: PhantomData,
+        }
     }
 
     /// The raw blob pointer, for advanced interop.

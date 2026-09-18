@@ -260,8 +260,7 @@ fn compiling_concurrently_is_safe() {
             .map(|_| {
                 let options = options.clone();
                 s.spawn(move || {
-                    let (out, _) =
-                        compile_with(AcceleratorConfig::EthosU55_128, &options).unwrap();
+                    let (out, _) = compile_with(AcceleratorConfig::EthosU55_128, &options).unwrap();
                     out.len()
                 })
             })

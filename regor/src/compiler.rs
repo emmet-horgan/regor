@@ -1,7 +1,6 @@
 use std::ffi::CString;
 use std::mem::MaybeUninit;
 use std::os::raw::c_void;
-use std::sync::{Mutex, MutexGuard, Once, PoisonError};
 
 use regor_sys as ffi;
 
@@ -11,43 +10,7 @@ use crate::error::check;
 use crate::format::InputFormat;
 use crate::output::{Blob, Output};
 use crate::perf::PerfReport;
-
-static LOGGING_INIT: Once = Once::new();
-
-/// Serialises **all** regor FFI calls across the process.
-///
-/// The C library is not safe to drive from more than one thread, even through
-/// separate contexts. Its own mutex covers the context registry — creation,
-/// lookup and destruction — but the compiler, scheduler and architecture code
-/// underneath reach global state that nothing guards, and that state is shared
-/// between contexts for as long as they exist. Holding a lock only around
-/// `regor_compile` is therefore not enough: configuring one context while
-/// another compiles corrupts it just the same.
-///
-/// So every entry point takes this lock. Concurrency is lost, which is a real
-/// cost, but a safe wrapper cannot offer a faster contract than the library
-/// underneath actually honours — and the failure mode being prevented is a
-/// segfault, not a wrong answer.
-///
-/// The lock is poisoned only if a call panics while holding it, which for this
-/// FFI means the library is in an unknown state. The guard is recovered rather
-/// than propagating a poison error, since the alternative is that every later
-/// call fails for a reason unrelated to its own input.
-static REGOR_LOCK: Mutex<()> = Mutex::new(());
-
-fn lock() -> MutexGuard<'static, ()> {
-    REGOR_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// No-op log writer registered as a fallback so regor never asserts on a null
-/// writer during compilation.
-unsafe extern "C" fn noop_log_writer(_data: *const c_void, _size: usize) {}
-
-fn ensure_logging_initialized() {
-    LOGGING_INIT.call_once(|| {
-        unsafe { ffi::regor_set_logging(Some(noop_log_writer), 0) };
-    });
-}
+use crate::sync::lock;
 
 /// A regor compiler instance.
 ///
@@ -63,16 +26,16 @@ fn ensure_logging_initialized() {
 pub struct Compiler {
     ctx: ffi::regor_context_t,
     /// Configuration is buffered rather than pushed straight through to the C
-    /// library, and applied inside [`Compiler::compile`] while `COMPILE_LOCK`
-    /// is held. Applying it eagerly would let one thread reconfigure the shared
+    /// library, and applied inside [`Compiler::compile`] while the FFI lock is
+    /// held. Applying it eagerly would let one thread reconfigure the shared
     /// state another thread is midway through compiling against.
     pending_system_config: Option<String>,
     pending_options: Option<String>,
 }
 
 // Each context owns its own C++ `Compiler`, so a context can be moved between
-// threads. It is deliberately not `Sync`, and compilation additionally takes
-// `COMPILE_LOCK` because the work underneath touches shared global state.
+// threads. It is deliberately not `Sync`: see [`crate::sync`] for why every
+// call additionally serialises on a process-wide lock.
 unsafe impl Send for Compiler {}
 
 impl std::fmt::Debug for Compiler {
@@ -94,11 +57,12 @@ impl Drop for Compiler {
 impl Compiler {
     /// Create a new compiler targeting `arch`.
     pub fn new(arch: Architecture) -> crate::Result<Self> {
-        ensure_logging_initialized();
+        crate::logging::ensure_installed();
         let _guard = lock();
         let mut ctx: ffi::regor_context_t = 0;
         let rc = unsafe { ffi::regor_create(&mut ctx, arch.as_cstr().as_ptr()) };
         check(ctx, rc)?;
+
         Ok(Compiler {
             ctx,
             pending_system_config: None,
@@ -176,7 +140,7 @@ impl Compiler {
 
     /// Push the buffered configuration into the C library.
     ///
-    /// Must be called with `COMPILE_LOCK` held: it mutates the state that
+    /// Must be called with the FFI lock held: it mutates the state that
     /// compilation then reads.
     fn apply_pending(&mut self) -> crate::Result<()> {
         if let Some(config) = self.pending_system_config.take() {
@@ -198,7 +162,7 @@ impl Compiler {
     ///
     /// Returns the compiled bytes as an [`Output`].
     ///
-    /// Serialised process-wide; see [`REGOR_LOCK`].
+    /// Serialised process-wide; see [`crate::sync`].
     pub fn compile(&mut self, format: InputFormat, model: &[u8]) -> crate::Result<Output> {
         let mut buf: Vec<u8> = Vec::new();
         let buf_ptr: *mut Vec<u8> = &mut buf;
@@ -252,11 +216,13 @@ impl Compiler {
         check(self.ctx, rc)
     }
 
-    /// Retrieve the compiled output as a reference-counted blob.
+    /// Retrieve the compiled output as a blob owned by this compiler.
     ///
     /// This is the C++ `IRegorBlob` interface — useful when you need to pass
-    /// the output back into other regor APIs without copying.
-    pub fn get_output_blob(&mut self) -> crate::Result<Blob> {
+    /// the output back into other regor APIs without copying. The returned
+    /// handle borrows the compiler, because the blob does not outlive the
+    /// context that produced it.
+    pub fn get_output_blob(&mut self) -> crate::Result<Blob<'_>> {
         let _guard = lock();
         let mut ptr: *mut ffi::IRegorBlob = std::ptr::null_mut();
         let rc = unsafe { ffi::regor_get_output(self.ctx, &mut ptr) };

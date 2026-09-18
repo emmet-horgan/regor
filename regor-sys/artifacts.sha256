@@ -1,0 +1,24 @@
+# SHA-256 digests of the pre-built native libraries `build.rs` downloads.
+#
+# A tarball whose digest is not listed here is never linked.
+#
+# GitHub also reports a digest for each release asset, but it comes from the
+# same server as the artifact, so it only proves the download was not corrupted
+# — something TLS already covers. These are different in kind: they are
+# reviewed in a commit, and GitHub cannot change them. Release assets are
+# mutable (delete the file, upload another with the same name), so without a
+# pin the tag could quietly start meaning a different binary. Same idea as
+# `Cargo.lock`.
+#
+# To update, dispatch the "Build native regor" workflow with `publish: true`,
+# then replace the contents below with the `SHA256SUMS` it published and bump
+# `ARTIFACT_TAG` in `build.rs` in the same commit.
+#
+# Format: `<64 hex digits>  <artifact file name>`, as written by `sha256sum`.
+# Blank lines and lines starting with `#` are ignored.
+
+0000000000000000000000000000000000000000000000000000000000000000  regor-native-x86_64-unknown-linux-gnu-release.tar.gz
+0000000000000000000000000000000000000000000000000000000000000000  regor-native-aarch64-unknown-linux-gnu-release.tar.gz
+0000000000000000000000000000000000000000000000000000000000000000  regor-native-x86_64-apple-darwin-release.tar.gz
+0000000000000000000000000000000000000000000000000000000000000000  regor-native-aarch64-apple-darwin-release.tar.gz
+0000000000000000000000000000000000000000000000000000000000000000  regor-native-x86_64-pc-windows-msvc-release.tar.gz

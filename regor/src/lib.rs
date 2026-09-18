@@ -33,22 +33,38 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
+//! # Concurrency
+//!
+//! Every call into the C library is serialised on a single process-wide lock,
+//! because regor reaches shared global state that its own locking does not
+//! cover. [`Compiler`] is `Send` but not `Sync`: move a context between threads
+//! freely, but expect compilations to run one at a time regardless of how many
+//! contexts exist. See [`sync`] for the full reasoning.
+//!
+//! # Logging
+//!
+//! regor's diagnostics are forwarded to the [`log`] and [`tracing`] facades
+//! under the target `regor`; enable the matching feature and call
+//! [`logging::init`]. The underlying callback API is process-global and is not
+//! exposed. See [`logging`].
+
 mod compiler;
 mod config;
 mod constraints;
 mod error;
 mod format;
-mod logging;
+pub mod logging;
 pub mod options;
 mod output;
 mod perf;
+pub mod sync;
 
 pub use compiler::Compiler;
 pub use config::Architecture;
 pub use constraints::{ConstraintsReport, OperatorConstraints};
 pub use error::Error;
 pub use format::InputFormat;
-pub use logging::{set_log_callback, set_log_callback_ex, LogFilter, LogFormat};
+pub use logging::{LogFilter, LogFormat};
 pub use options::{AcceleratorConfig, CompilerOptions, OptionsError, SystemConfig};
 pub use output::{Blob, Output};
 pub use perf::{MemoryAccessPerf, PeakMemoryUsage, PerfReport};

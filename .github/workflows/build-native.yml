@@ -1,0 +1,221 @@
+name: Build native regor
+
+# Builds the regor static library for every supported target and build
+# configuration, and optionally publishes the result as a GitHub release.
+#
+# `regor-sys/build.rs` downloads these assets by default, so `cargo build` needs
+# neither cmake nor a C++ toolchain. The release tag it looks for is pinned in
+# `ARTIFACT_TAG`; publishing a new set means bumping that constant in lockstep.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish to (e.g. native-v5.2.0). Must match ARTIFACT_TAG in regor-sys/build.rs."
+        required: true
+        default: native-v5.2.0
+      publish:
+        description: "Publish a GitHub release. When false, artifacts are uploaded to the run only."
+        type: boolean
+        default: false
+      configs:
+        description: "Build configurations to produce."
+        type: choice
+        options: [release, "release,debug", debug]
+        default: release
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Expand the requested configurations into a matrix dimension.
+  # --------------------------------------------------------------------------
+  plan:
+    name: Plan matrix
+    runs-on: ubuntu-latest
+    outputs:
+      configs: ${{ steps.expand.outputs.configs }}
+    steps:
+      - id: expand
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          raw = os.environ["CONFIGS"]
+          configs = [c.strip() for c in raw.split(",") if c.strip()]
+          assert set(configs) <= {"release", "debug"}, configs
+          print("configs=" + json.dumps(configs))
+          PY
+        env:
+          CONFIGS: ${{ inputs.configs }}
+
+  # --------------------------------------------------------------------------
+  # One native build per (target, configuration).
+  # --------------------------------------------------------------------------
+  build:
+    name: ${{ matrix.target }} (${{ matrix.config }})
+    needs: plan
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config: ${{ fromJSON(needs.plan.outputs.configs) }}
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+          - x86_64-apple-darwin
+          - aarch64-apple-darwin
+          - x86_64-pc-windows-msvc
+        # Maps each target onto the runner that can build it natively. Keyed on
+        # `target` so these merge into the existing combinations instead of
+        # adding new ones.
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+          - target: x86_64-apple-darwin
+            os: macos-13
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+
+      - name: Set up MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y
+
+      - name: Check out ethos-u-vela
+        shell: bash
+        run: |
+          set -euo pipefail
+          release=$(grep -oE 'PINNED_RELEASE: &str = "[^"]+"' regor-sys/build.rs \
+            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "VELA_RELEASE=$release" >> "$GITHUB_ENV"
+          git clone --depth 1 --branch "$release" \
+            https://gitlab.arm.com/artificial-intelligence/ethos-u/ethos-u-vela.git vela
+
+      # Patching happens here rather than in build.rs: it is a property of what
+      # we publish, not of how the crate builds. Anyone building from their own
+      # checkout gets their source untouched.
+      - name: Apply patches
+        shell: bash
+        working-directory: vela
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for patch in ../regor-sys/patches/*.patch; do
+            echo "applying $(basename "$patch")"
+            git apply --verbose "$patch"
+          done
+
+      # The build script is the single source of truth for how regor is
+      # configured. Driving it here — rather than reimplementing cmake
+      # invocations in YAML — keeps the published artifacts identical to what a
+      # local source build of the same tree would produce.
+      - name: Build native library
+        shell: bash
+        run: cargo build -p regor-sys --target ${{ matrix.target }} -vv
+        env:
+          REGOR_CACHE_DIR: ${{ github.workspace }}/native-cache
+          REGOR_BUILD_TYPE: ${{ matrix.config }}
+          ETHOS_U_VELA_PATH: ${{ github.workspace }}/vela
+
+      - name: Package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="regor-native-${{ matrix.target }}-${{ matrix.config }}"
+          install="native-cache/${{ matrix.target }}/regor-install"
+          test -d "$install" || { echo "no install tree at $install"; exit 1; }
+
+          # Ship the cmake install tree: the static library plus the headers,
+          # which build.rs republishes as `cargo:include` for dependent crates.
+          # The build tree — objects, cmake cache, staged sources — is not
+          # included; none of it is usable on another machine.
+          staging="staging/$name"
+          mkdir -p "$staging"
+          cp -R "$install/." "$staging/"
+
+          cat > "$staging/MANIFEST.json" <<EOF
+          {
+            "target": "${{ matrix.target }}",
+            "config": "${{ matrix.config }}",
+            "vela_release": "${VELA_RELEASE}",
+            "commit": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}"
+          }
+          EOF
+
+          mkdir -p dist
+          tar czf "dist/$name.tar.gz" -C "$staging" .
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.name }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  # --------------------------------------------------------------------------
+  # Collect every artifact, checksum it, and publish.
+  # --------------------------------------------------------------------------
+  publish:
+    name: Publish release
+    needs: build
+    if: inputs.publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # `regor-sys/artifacts.sha256` pins these digests in the crate, so this
+      # file is what you copy from when bumping ARTIFACT_TAG. build.rs does not
+      # read it at build time — a checksum served from the same place as the
+      # artifact would only prove the transfer was intact.
+      - name: Generate SHA256SUMS
+        working-directory: dist
+        run: sha256sum *.tar.gz | tee SHA256SUMS
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: regor native ${{ inputs.tag }}
+          body: |
+            Pre-built regor static libraries consumed by `regor-sys/build.rs`.
+
+            Built from `${{ github.sha }}` by run `${{ github.run_id }}`.
+
+            To adopt these, copy `SHA256SUMS` into `regor-sys/artifacts.sha256`
+            and set `ARTIFACT_TAG` to `${{ inputs.tag }}` in the same commit.
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS

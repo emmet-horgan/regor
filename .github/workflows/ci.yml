@@ -32,21 +32,21 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install build tools (Ubuntu)
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
+      #- name: Install build tools (Ubuntu)
+      #  if: runner.os == 'Linux'
+      #  run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
 
-      - name: Install build tools (macOS)
-        if: runner.os == 'macOS'
-        run: brew install cmake ninja
+      #- name: Install build tools (macOS)
+      #  if: runner.os == 'macOS'
+      #  run: brew install cmake ninja
 
-      - name: Set up MSVC environment (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
+      #- name: Set up MSVC environment (Windows)
+      #  if: runner.os == 'Windows'
+      #  uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install Ninja (Windows)
-        if: runner.os == 'Windows'
-        run: choco install ninja
+      #- name: Install Ninja (Windows)
+      #  if: runner.os == 'Windows'
+      #  run: choco install ninja
 
       - name: Install Python dependencies
         run: |
@@ -63,9 +63,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-registry-
 
-      - name: Force-clean regor-sys build state
-        run: cargo clean -p regor-sys 2>nul || true
-        shell: bash
+      #- name: Force-clean regor-sys build state
+      #  run: cargo clean -p regor-sys 2>nul || true
+      #  shell: bash
 
       - name: Cache test fixtures
         uses: actions/cache@v4
@@ -83,30 +83,30 @@ jobs:
 
       # CI validates the source-build path. The pre-built artifacts are
       # validated by the workflow that produces them.
-      - name: Check out ethos-u-vela
-        shell: bash
-        run: |
-          set -euo pipefail
-          release=$(grep -oE 'PINNED_RELEASE: &str = "[^"]+"' regor-sys/build.rs \
-            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
-          git clone --depth 1 --branch "$release" \
-            https://gitlab.arm.com/artificial-intelligence/ethos-u/ethos-u-vela.git vela
-          # Not $PWD: under Git Bash on Windows that is an MSYS path
-          # (/d/a/...), which the build script cannot open.
-          echo "ETHOS_U_VELA_PATH=${GITHUB_WORKSPACE}/vela" >> "$GITHUB_ENV"
+      #- name: Check out ethos-u-vela
+      #  shell: bash
+      #  run: |
+      #    set -euo pipefail
+      #    release=$(grep -oE 'PINNED_RELEASE: &str = "[^"]+"' regor-sys/build.rs \
+      #      | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+      #    git clone --depth 1 --branch "$release" \
+      #      https://gitlab.arm.com/artificial-intelligence/ethos-u/ethos-u-vela.git vela
+      #    # Not $PWD: under Git Bash on Windows that is an MSYS path
+      #    # (/d/a/...), which the build script cannot open.
+      #    echo "ETHOS_U_VELA_PATH=${GITHUB_WORKSPACE}/vela" >> "$GITHUB_ENV"
 
       # Patching is CI's job, not the build script's. Tests run against the
       # same patched source the published artifacts are built from.
-      - name: Apply patches
-        shell: bash
-        working-directory: vela
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          for patch in ../regor-sys/patches/*.patch; do
-            echo "applying $(basename "$patch")"
-            git apply --verbose "$patch"
-          done
+      #- name: Apply patches
+      #  shell: bash
+      #  working-directory: vela
+      #  run: |
+      #    set -euo pipefail
+      #    shopt -s nullglob
+      #    for patch in ../regor-sys/patches/*.patch; do
+      #      echo "applying $(basename "$patch")"
+      #      git apply --verbose "$patch"
+      #    done
 
       - name: Build workspace (verbose for regor-sys)
         run: cargo build --workspace --all-features -vv

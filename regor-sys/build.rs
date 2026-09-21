@@ -245,8 +245,6 @@ fn download_prebuilt() -> PathBuf {
 
     fs::remove_dir_all(&dir).ok();
     fs::rename(&staging, &dir).expect("failed to publish artifact dir");
-
-    eprintln!("regor-sys: using pre-built {name}");
     dir
 }
 

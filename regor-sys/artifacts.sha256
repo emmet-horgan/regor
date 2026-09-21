@@ -17,8 +17,8 @@
 # Format: `<64 hex digits>  <artifact file name>`, as written by `sha256sum`.
 # Blank lines and lines starting with `#` are ignored.
 
-0000000000000000000000000000000000000000000000000000000000000000  regor-native-x86_64-unknown-linux-gnu-release.tar.gz
-0000000000000000000000000000000000000000000000000000000000000000  regor-native-aarch64-unknown-linux-gnu-release.tar.gz
+c451f7950a3b1de38bc9fa88b4474344b34fb51b9a9b52cc52c30e12d95875ab  regor-native-x86_64-unknown-linux-gnu-release.tar.gz
+ab0cffd831c82458d6ac992986721f0a122e03277bf3caca47c2d6266d1c2e92  regor-native-aarch64-unknown-linux-gnu-release.tar.gz
 0000000000000000000000000000000000000000000000000000000000000000  regor-native-x86_64-apple-darwin-release.tar.gz
-0000000000000000000000000000000000000000000000000000000000000000  regor-native-aarch64-apple-darwin-release.tar.gz
-0000000000000000000000000000000000000000000000000000000000000000  regor-native-x86_64-pc-windows-msvc-release.tar.gz
+a7729e05b3a1217f88d631d26d203f17bf0be9888d76a18ce293b8894b0b3252  regor-native-aarch64-apple-darwin-release.tar.gz
+9f5621eb909ba9947fc0d2a4b2e7db677398cfbc251604a1a8c72861ca024070  regor-native-x86_64-pc-windows-msvc-release.tar.gz

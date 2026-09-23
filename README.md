@@ -14,14 +14,24 @@ models for the Ethos-U family of NPUs (U55, U65, U85).
 ## Quick start
 
 ```rust
-use regor::{Architecture, Compiler, InputFormat};
+let model = std::fs::read(&model_path)?;
 
-let model = std::fs::read("model.tflite")?;
+let accelerator = regor::AcceleratorConfig::EthosU55_256;
 
-let mut compiler = Compiler::new(Architecture::EthosU55)?;
-let output = compiler.compile(InputFormat::TfLite, &model)?;
+let system = regor::SystemConfig::new(accelerator)
+    .system_config_name("Ethos_U55_High_End_Embedded")
+    .memory_mode_name("Shared_Sram")
+    .vela_ini(VELA_INI)
+    .build();
 
-std::fs::write("output.tflite", output.as_bytes())?;
+let options = regor::CompilerOptions::new()
+    .optimize(regor::Optimize::Performance)
+    .build()?;
+
+let mut compiler = regor::Compiler::new(accelerator.architecture())?;
+compiler.set_system_config(&system)?;
+compiler.set_options(&options)?;
+let output = compiler.compile(regor::InputFormat::TfLite, &model)?;
 
 let report = compiler.perf_report()?;
 println!("NPU cycles: {}", report.npu_cycles);
@@ -46,16 +56,16 @@ build fails with instructions rather than quietly doing something slower.
 
 Artifacts are produced by the **Build native regor** workflow
 (`.github/workflows/build-native.yml`), dispatched manually. Each one is the
-cmake *install* tree — the static library plus the headers — for one target and
+cmake *install* tree, the static library plus the headers, for one target and
 configuration. Publishing a new set means updating `artifacts.sha256` from the
 release's `SHA256SUMS` and bumping `ARTIFACT_TAG` in `regor-sys/build.rs` in the
 same commit.
 
 ### Patches
 
-`regor-sys/patches/` carries fixes for upstream regor bugs — currently a
+`regor-sys/patches/` carries fixes for upstream regor bugs, currently a
 context-id collision that can destroy a live compiler when one context is
-released while another is in use.
+released while another is in use (but this has been merged upstream)
 
 They are applied **only** when building the published artifacts. The build
 script never patches, so if you build from source you get your source, exactly
@@ -90,7 +100,7 @@ ETHOS_U_VELA_PATH=$PWD/ethos-u-vela cargo build
 
 ## Concurrency
 
-regor reaches process-global state that its own locking does not cover, so
+regor has process-global state that its own locking does not cover, so
 every call into the C library is serialised on a single lock. `Compiler` is
 `Send` but not `Sync`: contexts move between threads freely, but only one
 compilation runs at a time no matter how many contexts exist. See the `sync`

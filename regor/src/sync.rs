@@ -4,16 +4,16 @@
 //!
 //! regor is not safe to drive from more than one thread, even through separate
 //! contexts. Its own mutex covers the context registry — creation, lookup and
-//! destruction — but the compiler, scheduler and architecture code underneath
-//! reach global state that nothing guards, and that state is shared between
+//! destruction — but the compiler, scheduler and architecture code underneath sometimes
+//! reaches global state that nothing guards, and that state is shared between
 //! contexts for as long as they exist. Holding a lock only around
 //! `regor_compile` is therefore not enough: configuring one context while
-//! another compiles corrupts it just the same.
+//! another compiles could possibly corrupts it just the same.
 //!
 //! So every entry point into the C library takes [`lock`]. Concurrency is lost,
-//! which is a real cost, but a safe wrapper cannot offer a faster contract than
-//! the library underneath actually honours — and the failure mode being
-//! prevented is a segfault, not a wrong answer.
+//! which is a real cost, but until regor has a stricter concurrency model, this
+//! is the only way that safety can be guaranteed. From the regor side, current 
+//! use is limited to python and is single-threaded, so this is not a practical limitation.
 //!
 //! # Consequences for the public API
 //!

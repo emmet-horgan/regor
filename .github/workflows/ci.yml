@@ -59,6 +59,8 @@ jobs:
 
       - name: Run all tests
         run: uv run cargo test --workspace --all-features
+        env:
+          PYTHON: python
 
   # --------------------------------------------------------------------------
   # Lint (formatting only — clippy needs the native lib)

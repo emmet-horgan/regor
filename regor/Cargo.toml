@@ -1,6 +1,6 @@
 [package]
 name = "regor"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Safe Rust API for ARM's regor compiler (Ethos-U NPU backend)"
 license = "MIT OR Apache-2.0"
@@ -15,7 +15,7 @@ keywords = [
 ]
 
 [dependencies]
-regor-sys = { path = "../regor-sys", version = "0.1.0" }
+regor-sys = { path = "../regor-sys", version = "0.2.0" }
 bitflags = "2"
 log = { version = "0.4", optional = true }
 tracing = { version = "0.1", optional = true } 

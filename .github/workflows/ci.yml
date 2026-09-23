@@ -50,11 +50,8 @@ jobs:
     
       - name: Install Python Dependencies
         run: uv sync
-      
-      - name: Generate test model
-        run: uv run python tests/generate_model.py tests/fixtures/test_model.tflite
 
-      - name: Download MobileNet model
+      - name: Download Test Models
         run: uv run python tests/download_models.py 
 
       - name: Build workspace

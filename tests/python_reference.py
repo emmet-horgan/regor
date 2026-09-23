@@ -25,9 +25,7 @@ Options (key=value):
 """
 
 import json
-import os
 import pathlib
-import struct
 import subprocess
 import sys
 

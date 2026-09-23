@@ -1,7 +1,7 @@
 [project]
 name = "regor-testing"
 version = "0.1.0"
-description = "Add your description here"
+description = "Testing utilities for regor-rs"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

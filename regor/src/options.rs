@@ -30,7 +30,7 @@
 //!     .build();
 //!
 //! let options = CompilerOptions::new()
-//!     .optimise(Optimise::Performance)
+//!     .optimize(Optimize::Performance)
 //!     .arena_cache_size(2 * 1024 * 1024)
 //!     .build()?;
 //!
@@ -315,7 +315,7 @@ pub enum Section {
 /// ```
 /// # use regor::options::*;
 /// let opts = CompilerOptions::new()
-///     .optimise(Optimise::Performance)
+///     .optimize(Optimize::Performance)
 ///     .arena_cache_size(2 * 1024 * 1024)
 ///     .build()
 ///     .unwrap();
@@ -415,7 +415,7 @@ impl CompilerOptions {
 
     /// Arena/cache memory budget in bytes.
     ///
-    /// Written as `arena_size_limit`. Under [`Optimise::Performance`] regor
+    /// Written as `arena_size_limit`. Under [`Optimize::Performance`] regor
     /// treats it as a target rather than a hard cap.
     pub fn arena_cache_size(mut self, bytes: u64) -> Self {
         self.arena_cache_size = Some(bytes);

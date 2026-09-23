@@ -114,7 +114,7 @@ impl Compiler {
     /// # use regor::{Compiler, Architecture};
     /// # use regor::options::*;
     /// let opts = CompilerOptions::new()
-    ///     .optimise(Optimise::Performance)
+    ///     .optimize(Optimize::Performance)
     ///     .arena_cache_size(2 * 1024 * 1024)
     ///     .build()
     ///     .unwrap();

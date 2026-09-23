@@ -20,7 +20,7 @@
 //!     .build();
 //!
 //! let options = CompilerOptions::new()
-//!     .optimise(Optimise::Performance)
+//!     .optimize(Optimize::Performance)
 //!     .build()?;
 //!
 //! let mut compiler = Compiler::new(accelerator.architecture())?;

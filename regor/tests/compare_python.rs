@@ -76,7 +76,8 @@ fn rust_regor_compile(
     let mut compiler = regor::Compiler::new(arch)?;
     compiler.system_config(system_config)?;
     compiler.compiler_options(compiler_options)?;
-    let out =compiler.compile(regor::InputFormat::TfLite, model_bytes)
+    let out = compiler
+        .compile(regor::InputFormat::TfLite, model_bytes)
         .unwrap();
     let report = compiler.perf_report().unwrap();
     Ok((out, report))
@@ -91,7 +92,6 @@ struct TestConfig {
     memory_mode: &'static str,
     optimise: &'static str,
 }
-
 
 #[rstest::rstest]
 #[case(
@@ -137,14 +137,17 @@ struct TestConfig {
 fn regor_matches_python(
     #[files("../tests/fixtures/*.tflite")] model_path: PathBuf,
     #[case] config: TestConfig,
-)
-{
+) {
     if should_skip() {
         eprintln!("Skipping Python comparison tests (SKIP_PYTHON_TESTS=1)");
         return;
     }
 
-    eprintln!("--- Config: {} Model: {:?} ---", config.name, model_path.file_name());
+    eprintln!(
+        "--- Config: {} Model: {:?} ---",
+        config.name,
+        model_path.file_name()
+    );
 
     let model_bytes = fs::read(&model_path).unwrap();
 
@@ -159,10 +162,15 @@ fn regor_matches_python(
     let sys_config = result["_system_config"].as_str().unwrap();
     let compiler_opts = result["_compiler_options"].as_str().unwrap();
 
-    let (rust_output, rust_perf) = match rust_regor_compile(&model_bytes, config.arch, sys_config, compiler_opts) {
-        Ok(o) => o,
-        Err(e) => panic!("Rust compilation failed for {} {:?}: {e}", config.name, model_path.file_name()),
-    };
+    let (rust_output, rust_perf) =
+        match rust_regor_compile(&model_bytes, config.arch, sys_config, compiler_opts) {
+            Ok(o) => o,
+            Err(e) => panic!(
+                "Rust compilation failed for {} {:?}: {e}",
+                config.name,
+                model_path.file_name()
+            ),
+        };
 
     let rust_bytes = rust_output.as_bytes();
 
@@ -184,7 +192,12 @@ fn regor_matches_python(
         model_path.file_name(),
     );
 
-    eprintln!("  PASS: {} {:?} ({} bytes)", config.name, model_path.file_name(), rust_bytes.len());
+    eprintln!(
+        "  PASS: {} {:?} ({} bytes)",
+        config.name,
+        model_path.file_name(),
+        rust_bytes.len()
+    );
 
     let report = rust_perf;
     let py_perf = &result["perf"];

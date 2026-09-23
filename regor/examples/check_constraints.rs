@@ -1,7 +1,6 @@
 const VELA_INI: &str = include_str!("../tests/fixtures/vela_default.ini");
 
 fn main() -> regor::Result<()> {
-
     // Initialize tracing subscriber when the `tracing` feature is enabled.
     #[cfg(feature = "tracing")]
     {
@@ -27,7 +26,8 @@ fn main() -> regor::Result<()> {
 
     let options = regor::CompilerOptions::new()
         .optimize(regor::Optimize::Performance)
-        .build().expect("failed to build compiler options");
+        .build()
+        .expect("failed to build compiler options");
 
     let mut compiler = regor::Compiler::new(accelerator.architecture())?;
     compiler.set_system_config(&system)?;

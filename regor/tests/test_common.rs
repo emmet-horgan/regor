@@ -1,7 +1,6 @@
 use std::env;
 use std::path::PathBuf;
 
-
 pub fn should_skip() -> bool {
     std::env::var("SKIP_PYTHON_TESTS").is_ok()
 }
@@ -11,5 +10,8 @@ pub fn python() -> String {
 }
 
 pub fn tests_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().unwrap().join("tests")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .join("tests")
 }

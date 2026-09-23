@@ -12,7 +12,7 @@
 //!
 //! So every entry point into the C library takes [`lock`]. Concurrency is lost,
 //! which is a real cost, but until regor has a stricter concurrency model, this
-//! is the only way that safety can be guaranteed. From the regor side, current 
+//! is the only way that safety can be guaranteed. From the regor side, current
 //! use is limited to python and is single-threaded, so this is not a practical limitation.
 //!
 //! # Consequences for the public API

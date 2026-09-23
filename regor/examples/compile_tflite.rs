@@ -29,14 +29,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let options = regor::CompilerOptions::new()
         .optimize(regor::Optimize::Performance)
-        .build().expect("failed to build compiler options");
+        .build()
+        .expect("failed to build compiler options");
 
     let mut compiler = regor::Compiler::new(accelerator.architecture())?;
     compiler.set_system_config(&system)?;
     compiler.set_options(&options)?;
-    let output = compiler.compile(regor::InputFormat::TfLite, &model).expect("failed to compile");
+    let output = compiler
+        .compile(regor::InputFormat::TfLite, &model)
+        .expect("failed to compile");
 
-    let report = compiler.perf_report().expect("failed to generate performance report");
+    let report = compiler
+        .perf_report()
+        .expect("failed to generate performance report");
     eprintln!(
         "NPU cycles: {}, CPU cycles: {}, total: {}",
         report.npu_cycles, report.cpu_cycles, report.total_cycles,

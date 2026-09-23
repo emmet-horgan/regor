@@ -54,7 +54,7 @@ pub(crate) fn check(ctx: ffi::regor_context_t, code: i32) -> crate::Result<()> {
         return Ok(());
     }
     let mut len: usize = 0;
-    // Note that we do not attempt to get the lock here because the assumption is 
+    // Note that we do not attempt to get the lock here because the assumption is
     // that we are checking an error internally within the regor bindings in which
     // case we already hold the lock, thus locking here would cause a deadlock.
     unsafe { ffi::regor_get_error(ctx, std::ptr::null_mut(), &mut len) };

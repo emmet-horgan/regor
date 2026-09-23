@@ -64,7 +64,7 @@ pub use constraints::{ConstraintsReport, OperatorConstraints};
 pub use error::Error;
 pub use format::InputFormat;
 pub use logging::{LogFilter, LogFormat};
-pub use options::{AcceleratorConfig, CompilerOptions, OptionsError, SystemConfig, Optimize};
+pub use options::{AcceleratorConfig, CompilerOptions, Optimize, OptionsError, SystemConfig};
 pub use output::{Blob, Output};
 pub use perf::{MemoryAccessPerf, PeakMemoryUsage, PerfReport};
 

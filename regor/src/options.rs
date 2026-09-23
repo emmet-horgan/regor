@@ -44,14 +44,14 @@ use std::fmt::Write;
 
 /// Optimization strategy (`[scheduler] optimize`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Optimise {
+pub enum Optimize {
     /// Prioritise inference speed; uses `arena_cache_size` as a memory target.
     Performance,
     /// Prioritise lower memory usage.
     Size,
 }
 
-impl Optimise {
+impl Optimize {
     fn as_str(self) -> &'static str {
         match self {
             Self::Performance => "Performance",
@@ -334,7 +334,7 @@ pub struct CompilerOptions {
     verbose_high_level_command_stream: Option<bool>,
     verbose_register_command_stream: Option<bool>,
     // [scheduler]
-    optimise: Option<Optimise>,
+    optimize: Option<Optimize>,
     arena_cache_size: Option<u64>,
     tensor_allocator: Option<TensorAllocator>,
     cpu_tensor_alignment: Option<u32>,
@@ -408,8 +408,8 @@ impl CompilerOptions {
     /// Whether to optimise for inference speed or memory footprint.
     ///
     /// Written as `optimize`, which is how regor spells it.
-    pub fn optimise(mut self, strategy: Optimise) -> Self {
-        self.optimise = Some(strategy);
+    pub fn optimize(mut self, strategy: Optimize) -> Self {
+        self.optimize = Some(strategy);
         self
     }
 
@@ -588,7 +588,7 @@ impl CompilerOptions {
         self.write_raw(&mut out, Section::Compiler);
 
         out.push_str("\n[scheduler]\n");
-        if let Some(v) = self.optimise {
+        if let Some(v) = self.optimize {
             let _ = writeln!(out, "optimize={}", v.as_str());
         }
         if let Some(v) = self.arena_cache_size {
@@ -794,7 +794,7 @@ mod tests {
     #[test]
     fn options_use_regors_own_key_names() {
         let s = CompilerOptions::new()
-            .optimise(Optimise::Performance)
+            .optimize(Optimize::Performance)
             .arena_cache_size(2_097_152)
             .build()
             .unwrap();

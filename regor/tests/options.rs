@@ -49,7 +49,7 @@ fn compile_with(
 fn the_typed_api_compiles_a_model() {
     let accelerator = AcceleratorConfig::EthosU55_128;
     let options = CompilerOptions::new()
-        .optimise(Optimise::Performance)
+        .optimize(Optimize::Performance)
         .build()
         .unwrap();
 
@@ -66,7 +66,7 @@ fn the_typed_api_compiles_a_model() {
 #[test]
 fn the_accelerator_reaches_regor_through_the_system_config() {
     let options = CompilerOptions::new()
-        .optimise(Optimise::Performance)
+        .optimize(Optimize::Performance)
         .build()
         .unwrap();
 
@@ -149,13 +149,13 @@ fn disabling_cascading_changes_the_schedule() {
     let accelerator = AcceleratorConfig::EthosU55_128;
 
     let baseline = CompilerOptions::new()
-        .optimise(Optimise::Performance)
+        .optimize(Optimize::Performance)
         .build()
         .unwrap();
     let (_, before) = compile_with(accelerator, &baseline).unwrap();
 
     let disabled = CompilerOptions::new()
-        .optimise(Optimise::Performance)
+        .optimize(Optimize::Performance)
         .disable_features(SchedulerFeature::CASCADING)
         .build()
         .unwrap();
@@ -177,11 +177,11 @@ fn optimising_for_size_differs_from_performance() {
     let accelerator = AcceleratorConfig::EthosU55_128;
 
     let perf_opts = CompilerOptions::new()
-        .optimise(Optimise::Performance)
+        .optimize(Optimize::Performance)
         .build()
         .unwrap();
     let size_opts = CompilerOptions::new()
-        .optimise(Optimise::Size)
+        .optimize(Optimize::Size)
         .build()
         .unwrap();
 
@@ -234,7 +234,7 @@ fn a_tighter_arena_is_respected() {
     let accelerator = AcceleratorConfig::EthosU55_128;
 
     let options = CompilerOptions::new()
-        .optimise(Optimise::Size)
+        .optimize(Optimize::Size)
         .arena_cache_size(256 * 1024)
         .build()
         .unwrap();
@@ -252,7 +252,7 @@ fn a_tighter_arena_is_respected() {
 #[test]
 fn compiling_concurrently_is_safe() {
     let options = CompilerOptions::new()
-        .optimise(Optimise::Performance)
+        .optimize(Optimize::Performance)
         .build()
         .unwrap();
 

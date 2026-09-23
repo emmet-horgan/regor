@@ -1,0 +1,10 @@
+[project]
+name = "regor-testing"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "ethos-u-vela>=5.2.0",
+    "tensorflow>=2.21.0",
+]

@@ -7,7 +7,7 @@
 //!
 //! That API is therefore **not exposed**. Handing out `set_log_callback` would
 //! mean handing out a way for one part of a program to silently redirect or
-//! disable another part's diagnostics — and to do so unsynchronised. Instead
+//! disable another part's diagnostics, and to do so unsynchronised. Instead
 //! this module installs one writer of its own, once, and forwards whatever
 //! regor emits to the logging facades the rest of the program already uses.
 //!

@@ -6,8 +6,7 @@
 //! # Quick start
 //!
 //! ```no_run
-//! use regor::{Compiler, InputFormat};
-//! use regor::options::*;
+//! use regor::{Compiler, InputFormat, SystemConfig, AcceleratorConfig, CompilerOptions, Optimize};
 //!
 //! let model_bytes = std::fs::read("model.tflite")?;
 //! let accelerator = AcceleratorConfig::EthosU55_256;
@@ -65,7 +64,7 @@ pub use constraints::{ConstraintsReport, OperatorConstraints};
 pub use error::Error;
 pub use format::InputFormat;
 pub use logging::{LogFilter, LogFormat};
-pub use options::{AcceleratorConfig, CompilerOptions, OptionsError, SystemConfig};
+pub use options::{AcceleratorConfig, CompilerOptions, OptionsError, SystemConfig, Optimize};
 pub use output::{Blob, Output};
 pub use perf::{MemoryAccessPerf, PeakMemoryUsage, PerfReport};
 

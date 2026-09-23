@@ -27,15 +27,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ethos-u-vela tensorflow
+      - name: Install uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
 
       - name: Cache cargo registry
         uses: actions/cache@v4
@@ -54,12 +47,15 @@ jobs:
           key: test-fixtures-v1
           restore-keys: |
             test-fixtures-
-
+    
+      - name: Install Python Dependencies
+        run: uv sync
+      
       - name: Generate test model
-        run: python tests/generate_model.py tests/fixtures/test_model.tflite
+        run: uv run python tests/generate_model.py tests/fixtures/test_model.tflite
 
       - name: Download MobileNet model
-        run: python tests/download_model.py tests/fixtures/mobilenet_v1_quant.tflite
+        run: uv run python tests/download_models.py 
 
       - name: Build workspace
         run: cargo build --workspace --all-features
@@ -67,7 +63,7 @@ jobs:
       - name: Run all tests
         run: cargo test --workspace --all-features
         env:
-          PYTHON: python
+          PYTHON: uv run python
 
   # --------------------------------------------------------------------------
   # Lint (formatting only — clippy needs the native lib)

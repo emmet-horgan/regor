@@ -73,6 +73,12 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=artifacts.sha256");
 
+    // docs.rs builds have no network access. The native library isn't
+    // needed to generate the Rust API documentation.
+    if env::var_os("DOCS_RS").is_some() {
+        return;
+    }
+
     if let Ok(lib_dir) = env::var("REGOR_LIB_DIR") {
         link(&PathBuf::from(lib_dir), env::var("REGOR_INCLUDE_DIR").ok());
         return;
